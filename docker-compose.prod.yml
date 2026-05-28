@@ -1,0 +1,56 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+
+  celery_worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      - db
+      - redis
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+
+  celery_beat:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      - redis
+    command: celery -A app.workers.celery_app beat --loglevel=info
+
+volumes:
+  pgdata:
+  redisdata:

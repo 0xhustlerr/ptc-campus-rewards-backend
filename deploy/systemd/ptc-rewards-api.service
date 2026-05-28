@@ -1,0 +1,14 @@
+[Unit]
+Description=PTC Campus Rewards API
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ptc-rewards/backend
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up -d api
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml stop api
+
+[Install]
+WantedBy=multi-user.target
