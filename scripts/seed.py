@@ -1,8 +1,9 @@
 """
-Seed default earning rules, reward items, and system ledger accounts.
+Seed default earning rules, reward items, system ledger accounts, and dev users.
 
 Usage:
   python -m scripts.seed
+  python -m scripts.seed_users   # users only
 """
 
 from decimal import Decimal
@@ -69,6 +70,10 @@ def seed() -> None:
 
         db.commit()
         print("Seed completed: system accounts, earning rules, reward items.")
+
+        from scripts.seed_users import seed_dev_users
+
+        seed_dev_users()
     finally:
         db.close()
 

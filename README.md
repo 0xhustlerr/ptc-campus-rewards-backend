@@ -29,7 +29,8 @@ docker compose exec api python -m scripts.seed
 |------|---------|
 | Migrations | `alembic upgrade head` |
 | New migration | `alembic revision --autogenerate -m "description"` |
-| Seed | `python -m scripts.seed` |
+| Seed (rules, catalog, dev users) | `python -m scripts.seed` |
+| Seed dev logins only | `python -m scripts.seed_users` |
 | Tests | `pytest` |
 | Celery worker | `celery -A app.workers.celery_app worker --loglevel=info` |
 | Celery beat | `celery -A app.workers.celery_app beat --loglevel=info` |
@@ -43,6 +44,17 @@ NEXT_PUBLIC_USE_MOCK_API=false
 ```
 
 Attach JWT: `Authorization: Bearer <access_token>` from `POST /api/v1/auth/login`.
+
+### Dev login accounts (after `python -m scripts.seed_users`)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@ptc.edu` | `CampusDev123!` |
+| Staff | `staff@ptc.edu` | `CampusDev123!` |
+| Student | `student@ptc.edu` | `CampusDev123!` |
+| Vendor | `vendor@ptc.edu` | `CampusDev123!` |
+
+Local development only — do not use these credentials in production.
 
 ## Auth endpoints
 

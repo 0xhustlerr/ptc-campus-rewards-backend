@@ -1,10 +1,10 @@
 """Application settings loaded from environment variables."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 JwtAlgorithm = Literal["HS256"]
 
@@ -36,7 +36,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
 
-    backend_cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # Comma-separated in .env (e.g. http://localhost:3000) — not JSON
+    backend_cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"]
+    )
 
     qr_session_ttl_seconds: int = 60
     required_attendance_days_per_week: int = 5
@@ -53,10 +56,12 @@ class Settings(BaseSettings):
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod
-    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+    def parse_cors_origins(cls, value: str | list[str] | None) -> list[str]:
+        if value is None or value == "":
+            return ["http://localhost:3000"]
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+        return list(value)
 
     @property
     def sqlalchemy_database_url(self) -> str:
