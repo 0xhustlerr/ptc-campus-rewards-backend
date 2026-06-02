@@ -21,7 +21,7 @@ class LedgerRepository:
             .options(joinedload(LedgerTransaction.entries))
             .where(LedgerTransaction.idempotency_key == key)
         )
-        return self.db.scalars(stmt).first()
+        return self.db.execute(stmt).unique().scalars().first()
 
     def get_transaction(self, tx_id: uuid.UUID) -> LedgerTransaction | None:
         stmt = (
@@ -29,7 +29,7 @@ class LedgerRepository:
             .options(joinedload(LedgerTransaction.entries))
             .where(LedgerTransaction.id == tx_id)
         )
-        return self.db.scalars(stmt).first()
+        return self.db.execute(stmt).unique().scalars().first()
 
     def get_transaction_for_update(self, tx_id: uuid.UUID) -> LedgerTransaction | None:
         stmt = (
@@ -38,7 +38,7 @@ class LedgerRepository:
             .where(LedgerTransaction.id == tx_id)
             .with_for_update()
         )
-        return self.db.scalars(stmt).first()
+        return self.db.execute(stmt).unique().scalars().first()
 
     def add_transaction(self, tx: LedgerTransaction) -> LedgerTransaction:
         self.db.add(tx)
@@ -89,7 +89,7 @@ class LedgerRepository:
             .limit(limit)
             .offset(offset)
         )
-        return list(self.db.scalars(stmt).all())
+        return list(self.db.execute(stmt).unique().scalars().all())
 
     def count_wallet_transactions(self, wallet_id: uuid.UUID) -> int:
         account_ids = select(LedgerAccount.id).where(LedgerAccount.wallet_id == wallet_id)
@@ -107,4 +107,4 @@ class LedgerRepository:
             .order_by(LedgerTransaction.created_at.desc())
             .limit(limit)
         )
-        return list(self.db.scalars(stmt).all())
+        return list(self.db.execute(stmt).unique().scalars().all())
