@@ -12,6 +12,8 @@ Closed-loop campus **PTC Credits** wallet for PTC barber college. Students earn 
 
 ## Local setup
 
+### With Docker
+
 ```bash
 cd backend
 cp .env.example .env
@@ -22,6 +24,64 @@ docker compose exec api python -m scripts.seed
 
 - API: http://localhost:8000/docs
 - Health: `GET /health`, `GET /api/v1/health`
+
+### Without Docker
+
+Run the API on your machine with local (or separately hosted) PostgreSQL and Redis.
+
+**Prerequisites**
+
+- Python 3.12+
+- PostgreSQL 16+ with database `ptc_rewards` and user matching `.env` (defaults: user `ptc`, password `ptc_secret`)
+- Redis 7+ on `localhost:6379`
+
+If you only want Postgres and Redis in containers, start them and keep the API native:
+
+```bash
+cd backend
+docker compose up db redis -d
+```
+
+**Setup**
+
+```bash
+cd backend
+cp .env.example .env
+# Edit .env if your Postgres/Redis hosts or credentials differ
+
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+
+pip install -r requirements.txt
+alembic upgrade head
+python -m scripts.seed
+```
+
+Create the database once (if it does not exist), for example:
+
+```bash
+psql -U postgres -c "CREATE USER ptc WITH PASSWORD 'ptc_secret';"
+psql -U postgres -c "CREATE DATABASE ptc_rewards OWNER ptc;"
+```
+
+**Run the API**
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- API: http://localhost:8000/docs
+- Health: `GET /health`, `GET /api/v1/health`
+
+**Optional — Celery** (separate terminals, same venv and `.env`):
+
+```bash
+celery -A app.workers.celery_app worker --loglevel=info
+celery -A app.workers.celery_app beat --loglevel=info
+```
+
+The API and auth flows work without Celery; background jobs and scheduled tasks need worker + beat.
 
 ## Commands
 
