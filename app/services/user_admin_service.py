@@ -3,8 +3,9 @@
 import uuid
 
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from app.core.exceptions import AppError, ConflictError
+from app.core.exceptions import AppError, ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.enums import UserRole, UserStatus, VendorStatus
 from app.models.user import User
@@ -74,6 +75,34 @@ class UserAdminService:
             actor_user_id=created_by,
             entity_id=str(user.id),
             after={"email": user.email, "role": user.role.value},
+            commit=False,
+        )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def list_users_by_status(self, status: UserStatus) -> list[User]:
+        stmt = select(User).where(User.status == status).order_by(User.created_at.desc())
+        return list(self.db.scalars(stmt).all())
+
+    def update_user_status(self, user_id: uuid.UUID, status: UserStatus, *, actor_id: uuid.UUID) -> User:
+        user = self.users.get_by_id(user_id)
+        if not user:
+            raise NotFoundError("User not found")
+        previous = user.status
+        user.status = status
+        action = AuditActions.USER_STATUS_CHANGED
+        if previous == UserStatus.pending and status == UserStatus.active:
+            action = AuditActions.USER_APPROVED
+        elif previous == UserStatus.pending and status == UserStatus.suspended:
+            action = AuditActions.USER_REJECTED
+        self.audit.record(
+            action,
+            "user",
+            actor_user_id=actor_id,
+            entity_id=str(user.id),
+            before={"status": previous.value},
+            after={"status": status.value},
             commit=False,
         )
         self.db.commit()

@@ -50,3 +50,10 @@ class RegisterUserRequest(BaseModel):
     # Vendor fields
     vendor_name: str | None = None
     vendor_type: VendorType | None = None
+
+
+class SelfRegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    role: UserRole
+    phone: str | None = None

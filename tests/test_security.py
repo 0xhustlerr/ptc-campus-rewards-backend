@@ -73,15 +73,36 @@ def test_register_admin_role_forbidden(client: TestClient, db_session):
 
     response = client.post(
         "/api/v1/auth/register",
-        headers=_auth_header(admin),
         json={
             "email": f"newadmin-{uuid4()}@ptc.edu",
             "password": "password123",
             "role": "admin",
         },
     )
-    assert response.status_code == 400
-    assert response.json()["code"] == "admin_provision_forbidden"
+    assert response.status_code == 403
+    assert response.json()["code"] == "forbidden"
+
+
+def test_admin_can_register_user_via_admin_endpoint(client: TestClient, db_session):
+    admin = User(
+        email=f"admin-{uuid4()}@ptc.edu",
+        hashed_password=hash_password("password123"),
+        role=UserRole.admin,
+        status=UserStatus.active,
+    )
+    db_session.add(admin)
+    db_session.flush()
+
+    response = client.post(
+        "/api/v1/auth/register/admin",
+        headers=_auth_header(admin),
+        json={
+            "email": f"newstudent-{uuid4()}@ptc.edu",
+            "password": "password123",
+            "role": "staff",
+        },
+    )
+    assert response.status_code == 201
 
 
 def test_refresh_token_user_binding(db_session):

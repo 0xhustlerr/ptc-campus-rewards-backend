@@ -10,6 +10,7 @@ from app.schemas.auth import (
     LogoutRequest,
     RefreshTokenRequest,
     RegisterUserRequest,
+    SelfRegisterRequest,
     TokenResponse,
     UserRead,
 )
@@ -44,7 +45,18 @@ def logout(
     AuthService(db).logout(body.refresh_token, current_user_id=current_user.id)
 
 
-@router.post("/register", response_model=UserRead, status_code=201, summary="Admin creates a user")
+@router.post("/register", response_model=UserRead, status_code=201, summary="Self-register account (pending admin approval)")
+def self_register_user(db: DbSession, body: SelfRegisterRequest) -> UserRead:
+    user = AuthService(db).self_register(
+        email=body.email,
+        password=body.password,
+        role=body.role,
+        phone=body.phone,
+    )
+    return user_to_read(user)
+
+
+@router.post("/register/admin", response_model=UserRead, status_code=201, summary="Admin creates a user")
 def register_user(db: DbSession, body: RegisterUserRequest, admin: AdminUser) -> UserRead:
     user = UserAdminService(db).register_user(body, created_by=admin.id)
     return user_to_read(user)

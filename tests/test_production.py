@@ -51,6 +51,26 @@ def test_auth_login(client: TestClient, staff_user, db_session):
     assert any(log.action == "user.login" for log in logs)
 
 
+def test_auth_login_pending_user(client: TestClient, db_session):
+    user = User(
+        email=f"pending-{uuid4()}@ptc.edu",
+        hashed_password=hash_password("password123"),
+        role=UserRole.student,
+        status=UserStatus.pending,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "password123"},
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert data["code"] == "account_pending_approval"
+    assert "pending admin approval" in data["detail"].lower()
+
+
 def test_student_cannot_view_other_wallet(
     client: TestClient, student_with_wallet, db_session, system_accounts
 ):

@@ -5,7 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.api.deps import AdminUser, DbSession
-from app.schemas.admin import AuditLogRead
+from app.models.enums import UserStatus
+from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead
+from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleCreate, EarningRuleRead, EarningRuleUpdate
 from app.schemas.ledger import AdminAdjustmentRequest, AdminReversalRequest, LedgerTransactionRead
 from app.schemas.reward import RewardItemCreate, RewardItemRead, RewardItemUpdate
@@ -22,8 +24,10 @@ from app.utils.mappers import (
     reward_item_to_read,
     student_to_list_item,
     transaction_to_read,
+    user_to_read,
     wallet_to_read,
 )
+from app.services.user_admin_service import UserAdminService
 
 router = APIRouter()
 
@@ -65,6 +69,23 @@ def admin_audit_logs(
     limit: int = Query(100, ge=1, le=200),
 ) -> list[AuditLogRead]:
     return [audit_log_to_read(log) for log in AdminService(db).list_audit_logs(limit)]
+
+
+@router.get("/users/pending", response_model=list[UserRead])
+def admin_pending_users(db: DbSession, _: AdminUser) -> list[UserRead]:
+    users = UserAdminService(db).list_users_by_status(UserStatus.pending)
+    return [user_to_read(user) for user in users]
+
+
+@router.patch("/users/{user_id}/status", response_model=UserRead)
+def admin_update_user_status(
+    user_id: UUID,
+    body: AdminUserStatusUpdate,
+    db: DbSession,
+    admin: AdminUser,
+) -> UserRead:
+    user = UserAdminService(db).update_user_status(user_id, body.status, actor_id=admin.id)
+    return user_to_read(user)
 
 
 @router.post("/adjustments", response_model=LedgerTransactionRead)

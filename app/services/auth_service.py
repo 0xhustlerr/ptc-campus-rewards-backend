@@ -8,14 +8,20 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_utils import parse_user_id
 from app.core.config import get_settings
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import (
+    AccountPendingApprovalError,
+    ConflictError,
+    ForbiddenError,
+    UnauthorizedError,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    hash_password,
     safe_decode_token,
     verify_password,
 )
-from app.models.enums import UserStatus
+from app.models.enums import UserRole, UserStatus
 from app.models.oauth import OAuthRefreshToken
 from app.models.user import User
 from app.repositories.oauth import OAuthTokenRepository
@@ -39,10 +45,14 @@ class AuthService:
 
     def login(self, email: str, password: str) -> TokenResponse:
         user = self.users.get_by_email(email.lower())
-        if not user or user.status != UserStatus.active:
+        if not user or not verify_password(password, user.hashed_password):
             raise UnauthorizedError("Invalid email or password")
-        if not verify_password(password, user.hashed_password):
-            raise UnauthorizedError("Invalid email or password")
+        if user.status == UserStatus.pending:
+            raise AccountPendingApprovalError()
+        if user.status != UserStatus.active:
+            raise ForbiddenError(
+                "Your account is not active. Contact campus administration for assistance."
+            )
 
         tokens = self._issue_tokens(user)
         self.audit.record(
@@ -94,6 +104,41 @@ class AuthService:
             entity_id=str(current_user_id),
             commit=True,
         )
+
+    def self_register(
+        self,
+        *,
+        email: str,
+        password: str,
+        role: UserRole,
+        phone: str | None = None,
+    ) -> User:
+        normalized_email = email.lower()
+        if self.users.get_by_email(normalized_email):
+            raise ConflictError("Email already registered")
+        if role == UserRole.admin:
+            raise ForbiddenError("Admin role cannot be self-registered")
+        if role not in (UserRole.student, UserRole.staff, UserRole.vendor):
+            raise ForbiddenError("Role cannot be self-registered")
+
+        user = User(
+            email=normalized_email,
+            phone=phone,
+            hashed_password=hash_password(password),
+            role=role,
+            status=UserStatus.pending,
+        )
+        self.users.create(user)
+        self.audit.record(
+            AuditActions.USER_REGISTERED,
+            "user",
+            entity_id=str(user.id),
+            after={"email": user.email, "role": user.role.value, "status": user.status.value},
+            commit=False,
+        )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
 
     def _issue_tokens(self, user: User) -> TokenResponse:
         access = create_access_token(str(user.id), role=user.role.value)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.models.enums import WalletStatus
+from app.models.enums import UserStatus, WalletStatus
 from pydantic import BaseModel
 
 from app.schemas.common import ORMModel
@@ -20,3 +20,7 @@ class AuditLogRead(ORMModel):
 
 class WalletStatusUpdate(BaseModel):
     status: WalletStatus
+
+
+class AdminUserStatusUpdate(BaseModel):
+    status: UserStatus

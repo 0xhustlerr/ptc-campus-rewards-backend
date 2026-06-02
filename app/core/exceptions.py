@@ -39,6 +39,21 @@ class UnauthorizedError(AppError):
         )
 
 
+class AccountPendingApprovalError(AppError):
+    def __init__(
+        self,
+        message: str = (
+            "Your registration is pending admin approval. "
+            "You can sign in after an administrator activates your account."
+        ),
+    ) -> None:
+        super().__init__(
+            message,
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="account_pending_approval",
+        )
+
+
 class ForbiddenError(AppError):
     def __init__(self, message: str = "Forbidden") -> None:
         super().__init__(message, status_code=status.HTTP_403_FORBIDDEN, code="forbidden")
