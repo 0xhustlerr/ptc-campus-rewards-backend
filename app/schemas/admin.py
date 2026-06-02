@@ -35,6 +35,12 @@ class PendingVendorProfileRead(ORMModel):
     vendor_type: VendorType
 
 
+class PendingStaffProfileRead(ORMModel):
+    first_name: str
+    last_name: str
+    department: str | None = None
+
+
 class PendingRegistrationRead(ORMModel):
     id: UUID
     email: str
@@ -43,6 +49,7 @@ class PendingRegistrationRead(ORMModel):
     status: UserStatus
     created_at: datetime
     student_profile: PendingStudentProfileRead | None = None
+    staff_profile: PendingStaffProfileRead | None = None
     vendor_profile: PendingVendorProfileRead | None = None
 
 
@@ -53,6 +60,7 @@ class AdminUserStatusUpdate(BaseModel):
     last_name: str | None = None
     cohort: str | None = None
     program: str | None = None
+    department: str | None = None
     vendor_name: str | None = None
     vendor_type: VendorType | None = None
 
@@ -60,18 +68,16 @@ class AdminUserStatusUpdate(BaseModel):
     def validate_profile_fields_on_activate(self) -> "AdminUserStatusUpdate":
         if self.status != UserStatus.active:
             return self
-        if any(
-            [
-                self.student_number,
-                self.first_name,
-                self.last_name,
-                self.cohort,
-                self.program,
-            ]
-        ) and not all([self.student_number, self.first_name, self.last_name]):
+        if any([self.student_number, self.cohort, self.program]) and not all(
+            [self.student_number, self.first_name, self.last_name]
+        ):
             raise ValueError(
                 "student_number, first_name, and last_name must all be provided together"
             )
+        if any([self.first_name, self.last_name, self.department]) and not all(
+            [self.first_name, self.last_name]
+        ):
+            raise ValueError("first_name and last_name must all be provided together")
         if any([self.vendor_name, self.vendor_type]) and not all(
             [self.vendor_name, self.vendor_type]
         ):

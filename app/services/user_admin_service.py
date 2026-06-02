@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import AppError, ConflictError, NotFoundError
 from app.core.security import hash_password
-from app.models.enums import UserRole, UserStatus, VendorStatus, VendorType
+from app.models.enums import StaffStatus, UserRole, UserStatus, VendorStatus, VendorType
+from app.models.staff import Staff
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.repositories.staff import StaffRepository
 from app.repositories.student import StudentRepository
 from app.repositories.user import UserRepository
 from app.repositories.vendor import VendorRepository
@@ -62,6 +64,15 @@ class UserAdminService:
             if not data.vendor_name or not data.vendor_type:
                 raise AppError("Vendor name and type are required")
             self.provision_vendor(user, name=data.vendor_name, vendor_type=data.vendor_type)
+        elif data.role == UserRole.staff:
+            if not all([data.first_name, data.last_name]):
+                raise AppError("First name and last name are required for staff")
+            self.provision_staff(
+                user,
+                first_name=data.first_name,
+                last_name=data.last_name,
+                department=data.department,
+            )
 
         self.audit.record(
             AuditActions.USER_REGISTERED,
@@ -74,6 +85,24 @@ class UserAdminService:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def provision_staff(
+        self,
+        user: User,
+        *,
+        first_name: str,
+        last_name: str,
+        department: str | None = None,
+    ) -> Staff:
+        staff = Staff(
+            user_id=user.id,
+            first_name=first_name,
+            last_name=last_name,
+            department=department,
+            status=StaffStatus.active,
+        )
+        StaffRepository(self.db).create(staff)
+        return staff
 
     def provision_vendor(self, user: User, *, name: str, vendor_type: VendorType) -> Vendor:
         vendor = Vendor(
@@ -93,7 +122,7 @@ class UserAdminService:
     def list_pending_registrations(self) -> list[User]:
         stmt = (
             select(User)
-            .options(joinedload(User.student), joinedload(User.vendor))
+            .options(joinedload(User.student), joinedload(User.staff), joinedload(User.vendor))
             .where(User.status == UserStatus.pending)
             .order_by(User.created_at.desc())
         )
@@ -110,6 +139,7 @@ class UserAdminService:
         last_name: str | None = None,
         cohort: str | None = None,
         program: str | None = None,
+        department: str | None = None,
         vendor_name: str | None = None,
         vendor_type: VendorType | None = None,
     ) -> User:
@@ -156,6 +186,25 @@ class UserAdminService:
                         code="vendor_profile_missing",
                     )
                 self.provision_vendor(user, name=vendor_name, vendor_type=vendor_type)
+
+        if (
+            status == UserStatus.active
+            and user.role == UserRole.staff
+            and previous == UserStatus.pending
+        ):
+            if not StaffRepository(self.db).get_by_user_id(user.id):
+                if not all([first_name, last_name]):
+                    raise AppError(
+                        "Staff profile is required before approval. "
+                        "Provide first name and last name.",
+                        code="staff_profile_missing",
+                    )
+                self.provision_staff(
+                    user,
+                    first_name=first_name,
+                    last_name=last_name,
+                    department=department,
+                )
 
         user.status = status
         action = AuditActions.USER_STATUS_CHANGED

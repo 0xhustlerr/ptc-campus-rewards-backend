@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.models.enums import UserRole, UserStatus, VendorType
+from app.schemas.admin import PendingStaffProfileRead
 from app.schemas.common import ORMModel
 
 
@@ -32,6 +33,7 @@ class UserRead(ORMModel):
     phone: str | None
     role: UserRole
     status: UserStatus
+    staff_profile: PendingStaffProfileRead | None = None
 
 
 class RegisterUserRequest(BaseModel):
@@ -50,6 +52,8 @@ class RegisterUserRequest(BaseModel):
     # Vendor fields
     vendor_name: str | None = None
     vendor_type: VendorType | None = None
+    # Staff fields (shared first/last name with student)
+    department: str | None = None
 
 
 class SelfRegisterRequest(BaseModel):
@@ -64,6 +68,7 @@ class SelfRegisterRequest(BaseModel):
     program: str | None = None
     vendor_name: str | None = None
     vendor_type: VendorType | None = None
+    department: str | None = None
 
     @model_validator(mode="after")
     def validate_role_fields(self) -> "SelfRegisterRequest":
@@ -73,6 +78,8 @@ class SelfRegisterRequest(BaseModel):
             raise ValueError(
                 "student_number, first_name, and last_name are required for student registration"
             )
+        if self.role == UserRole.staff and not all([self.first_name, self.last_name]):
+            raise ValueError("first_name and last_name are required for staff registration")
         if self.role == UserRole.vendor and not all([self.vendor_name, self.vendor_type]):
             raise ValueError("vendor_name and vendor_type are required for vendor registration")
         return self

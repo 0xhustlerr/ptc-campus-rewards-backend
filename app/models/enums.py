@@ -24,6 +24,11 @@ class StudentStatus(str, enum.Enum):
     withdrawn = "withdrawn"
 
 
+class StaffStatus(str, enum.Enum):
+    active = "active"
+    inactive = "inactive"
+
+
 class VendorType(str, enum.Enum):
     food_truck = "food_truck"
     school_store = "school_store"

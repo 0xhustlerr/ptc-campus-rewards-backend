@@ -15,6 +15,7 @@ from app.models.audit_log import AuditLog
 from app.schemas.admin import (
     AuditLogRead,
     PendingRegistrationRead,
+    PendingStaffProfileRead,
     PendingStudentProfileRead,
     PendingVendorProfileRead,
 )
@@ -27,7 +28,21 @@ from app.schemas.wallet import WalletRead
 
 
 def user_to_read(user: User) -> UserRead:
-    return UserRead.model_validate(user)
+    staff_profile = None
+    if user.staff:
+        staff_profile = PendingStaffProfileRead(
+            first_name=user.staff.first_name,
+            last_name=user.staff.last_name,
+            department=user.staff.department,
+        )
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        status=user.status,
+        staff_profile=staff_profile,
+    )
 
 
 def pending_registration_to_read(user: User) -> PendingRegistrationRead:
@@ -39,6 +54,13 @@ def pending_registration_to_read(user: User) -> PendingRegistrationRead:
             last_name=user.student.last_name,
             cohort=user.student.cohort,
             program=user.student.program,
+        )
+    staff_profile = None
+    if user.staff:
+        staff_profile = PendingStaffProfileRead(
+            first_name=user.staff.first_name,
+            last_name=user.staff.last_name,
+            department=user.staff.department,
         )
     vendor_profile = None
     if user.vendor:
@@ -54,6 +76,7 @@ def pending_registration_to_read(user: User) -> PendingRegistrationRead:
         status=user.status,
         created_at=user.created_at,
         student_profile=student_profile,
+        staff_profile=staff_profile,
         vendor_profile=vendor_profile,
     )
 

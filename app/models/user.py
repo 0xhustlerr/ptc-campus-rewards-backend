@@ -21,6 +21,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     student: Mapped["Student | None"] = relationship("Student", back_populates="user", uselist=False)
+    staff: Mapped["Staff | None"] = relationship("Staff", back_populates="user", uselist=False)
     vendor: Mapped["Vendor | None"] = relationship("Vendor", back_populates="user", uselist=False)
     refresh_tokens: Mapped[list["OAuthRefreshToken"]] = relationship(
         "OAuthRefreshToken",

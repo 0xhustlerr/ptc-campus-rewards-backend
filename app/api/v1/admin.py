@@ -96,6 +96,7 @@ def admin_update_user_status(
         last_name=body.last_name,
         cohort=body.cohort,
         program=body.program,
+        department=body.department,
         vendor_name=body.vendor_name,
         vendor_type=body.vendor_type,
     )

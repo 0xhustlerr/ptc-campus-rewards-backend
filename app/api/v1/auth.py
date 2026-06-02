@@ -1,6 +1,8 @@
 """OAuth 2.0 style authentication — closed-loop campus access."""
 
 from fastapi import APIRouter, Request
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.core.config import get_settings
@@ -14,6 +16,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserRead,
 )
+from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.user_admin_service import UserAdminService
 from app.utils.mappers import user_to_read
@@ -59,6 +62,7 @@ def self_register_user(db: DbSession, body: SelfRegisterRequest) -> UserRead:
         program=body.program,
         vendor_name=body.vendor_name,
         vendor_type=body.vendor_type,
+        department=body.department,
     )
     return user_to_read(user)
 
@@ -70,5 +74,7 @@ def register_user(db: DbSession, body: RegisterUserRequest, admin: AdminUser) ->
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: CurrentUser) -> UserRead:
-    return user_to_read(current_user)
+def me(db: DbSession, current_user: CurrentUser) -> UserRead:
+    stmt = select(User).where(User.id == current_user.id).options(joinedload(User.staff))
+    user = db.scalars(stmt).one()
+    return user_to_read(user)

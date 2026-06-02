@@ -11,6 +11,7 @@ from app.models.enums import (
     EntryDirection,
     RedemptionStatus,
     RewardCategory,
+    StaffStatus,
     StudentStatus,
     TransactionStatus,
     TransactionType,
@@ -26,6 +27,7 @@ from app.models.oauth import OAuthRefreshToken
 from app.models.qr_session import QRSession
 from app.models.redemption import Redemption
 from app.models.reward_item import RewardItem
+from app.models.staff import Staff
 from app.models.student import Student
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -49,6 +51,8 @@ __all__ = [
     "RedemptionStatus",
     "RewardCategory",
     "RewardItem",
+    "Staff",
+    "StaffStatus",
     "Student",
     "StudentStatus",
     "TransactionStatus",

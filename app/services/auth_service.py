@@ -121,6 +121,7 @@ class AuthService:
         program: str | None = None,
         vendor_name: str | None = None,
         vendor_type: VendorType | None = None,
+        department: str | None = None,
     ) -> User:
         normalized_email = email.lower()
         if self.users.get_by_email(normalized_email):
@@ -157,6 +158,13 @@ class AuthService:
                 user,
                 name=vendor_name,
                 vendor_type=vendor_type,
+            )
+        elif role == UserRole.staff:
+            UserAdminService(self.db).provision_staff(
+                user,
+                first_name=first_name,
+                last_name=last_name,
+                department=department,
             )
 
         self.audit.record(

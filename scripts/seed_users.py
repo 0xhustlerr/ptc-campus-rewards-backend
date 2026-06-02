@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.vendor import Vendor
 from app.repositories.user import UserRepository
 from app.repositories.vendor import VendorRepository
+from app.services.staff_service import StaffService
 from app.services.student_service import StudentService
 from app.services.system_accounts_service import SystemAccountsService
 
@@ -30,6 +31,9 @@ DEV_USERS: list[dict] = [
         "email": "staff@ptc.edu",
         "role": UserRole.staff,
         "label": "Staff",
+        "first_name": "Campus",
+        "last_name": "Staff",
+        "department": "Student Services",
     },
     {
         "email": "student@ptc.edu",
@@ -74,10 +78,25 @@ def seed_dev_users() -> None:
         SystemAccountsService(db).ensure_system_accounts()
         users = UserRepository(db)
         student_svc = StudentService(db)
+        staff_svc = StaffService(db)
 
         print("Seeding development users (password for all new accounts: CampusDev123!)")
         for spec in DEV_USERS:
             role = spec["role"]
+            if role == UserRole.staff:
+                if users.get_by_email(spec["email"]):
+                    print(f"  skip Staff: {spec['email']} (already exists)")
+                    continue
+                staff_svc.create_staff(
+                    email=spec["email"],
+                    password=DEV_PASSWORD,
+                    first_name=spec["first_name"],
+                    last_name=spec["last_name"],
+                    department=spec.get("department"),
+                )
+                print(f"  created Staff: {spec['email']}")
+                continue
+
             if role == UserRole.student:
                 if users.get_by_email(spec["email"]):
                     print(f"  skip Student: {spec['email']} (already exists)")
