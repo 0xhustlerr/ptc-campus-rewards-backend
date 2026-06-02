@@ -21,13 +21,15 @@ from app.core.security import (
     safe_decode_token,
     verify_password,
 )
-from app.models.enums import UserRole, UserStatus
+from app.models.enums import UserRole, UserStatus, VendorType
 from app.models.oauth import OAuthRefreshToken
 from app.models.user import User
 from app.repositories.oauth import OAuthTokenRepository
 from app.repositories.user import UserRepository
 from app.schemas.auth import TokenResponse
 from app.services.audit_service import AuditActions, AuditService
+from app.services.student_service import StudentService
+from app.services.user_admin_service import UserAdminService
 
 settings = get_settings()
 
@@ -112,6 +114,13 @@ class AuthService:
         password: str,
         role: UserRole,
         phone: str | None = None,
+        student_number: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        cohort: str | None = None,
+        program: str | None = None,
+        vendor_name: str | None = None,
+        vendor_type: VendorType | None = None,
     ) -> User:
         normalized_email = email.lower()
         if self.users.get_by_email(normalized_email):
@@ -129,6 +138,27 @@ class AuthService:
             status=UserStatus.pending,
         )
         self.users.create(user)
+
+        if role == UserRole.student:
+            StudentService(self.db).create_student(
+                email=normalized_email,
+                password=password,
+                student_number=student_number,
+                first_name=first_name,
+                last_name=last_name,
+                cohort=cohort,
+                program=program,
+                phone=phone,
+                skip_user_creation=True,
+                existing_user=user,
+            )
+        elif role == UserRole.vendor:
+            UserAdminService(self.db).provision_vendor(
+                user,
+                name=vendor_name,
+                vendor_type=vendor_type,
+            )
+
         self.audit.record(
             AuditActions.USER_REGISTERED,
             "user",

@@ -2,14 +2,15 @@
 
 import uuid
 
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import AppError, ConflictError, NotFoundError
 from app.core.security import hash_password
-from app.models.enums import UserRole, UserStatus, VendorStatus
+from app.models.enums import UserRole, UserStatus, VendorStatus, VendorType
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.repositories.student import StudentRepository
 from app.repositories.user import UserRepository
 from app.repositories.vendor import VendorRepository
 from app.schemas.auth import RegisterUserRequest
@@ -60,14 +61,7 @@ class UserAdminService:
         elif data.role == UserRole.vendor:
             if not data.vendor_name or not data.vendor_type:
                 raise AppError("Vendor name and type are required")
-            vendor = Vendor(
-                user_id=user.id,
-                name=data.vendor_name,
-                vendor_type=data.vendor_type,
-                status=VendorStatus.active,
-            )
-            VendorRepository(self.db).create(vendor)
-            SystemAccountsService(self.db).ensure_vendor_account(vendor.id, vendor.name)
+            self.provision_vendor(user, name=data.vendor_name, vendor_type=data.vendor_type)
 
         self.audit.record(
             AuditActions.USER_REGISTERED,
@@ -81,15 +75,88 @@ class UserAdminService:
         self.db.refresh(user)
         return user
 
+    def provision_vendor(self, user: User, *, name: str, vendor_type: VendorType) -> Vendor:
+        vendor = Vendor(
+            user_id=user.id,
+            name=name,
+            vendor_type=vendor_type,
+            status=VendorStatus.active,
+        )
+        VendorRepository(self.db).create(vendor)
+        SystemAccountsService(self.db).ensure_vendor_account(vendor.id, vendor.name)
+        return vendor
+
     def list_users_by_status(self, status: UserStatus) -> list[User]:
         stmt = select(User).where(User.status == status).order_by(User.created_at.desc())
         return list(self.db.scalars(stmt).all())
 
-    def update_user_status(self, user_id: uuid.UUID, status: UserStatus, *, actor_id: uuid.UUID) -> User:
+    def list_pending_registrations(self) -> list[User]:
+        stmt = (
+            select(User)
+            .options(joinedload(User.student), joinedload(User.vendor))
+            .where(User.status == UserStatus.pending)
+            .order_by(User.created_at.desc())
+        )
+        return list(self.db.scalars(stmt).unique().all())
+
+    def update_user_status(
+        self,
+        user_id: uuid.UUID,
+        status: UserStatus,
+        *,
+        actor_id: uuid.UUID,
+        student_number: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        cohort: str | None = None,
+        program: str | None = None,
+        vendor_name: str | None = None,
+        vendor_type: VendorType | None = None,
+    ) -> User:
         user = self.users.get_by_id(user_id)
         if not user:
             raise NotFoundError("User not found")
         previous = user.status
+
+        if (
+            status == UserStatus.active
+            and user.role == UserRole.student
+            and previous == UserStatus.pending
+        ):
+            if not StudentRepository(self.db).get_by_user_id(user.id):
+                if not all([student_number, first_name, last_name]):
+                    raise AppError(
+                        "Student profile is required before approval. "
+                        "Provide student number, first name, and last name.",
+                        code="student_profile_missing",
+                    )
+                StudentService(self.db).create_student(
+                    email=user.email,
+                    password="",
+                    student_number=student_number,
+                    first_name=first_name,
+                    last_name=last_name,
+                    cohort=cohort,
+                    program=program,
+                    phone=user.phone,
+                    skip_user_creation=True,
+                    existing_user=user,
+                )
+
+        if (
+            status == UserStatus.active
+            and user.role == UserRole.vendor
+            and previous == UserStatus.pending
+        ):
+            if not VendorRepository(self.db).get_by_user_id(user.id):
+                if not vendor_name or not vendor_type:
+                    raise AppError(
+                        "Vendor profile is required before approval. "
+                        "Provide business name and vendor type.",
+                        code="vendor_profile_missing",
+                    )
+                self.provision_vendor(user, name=vendor_name, vendor_type=vendor_type)
+
         user.status = status
         action = AuditActions.USER_STATUS_CHANGED
         if previous == UserStatus.pending and status == UserStatus.active:

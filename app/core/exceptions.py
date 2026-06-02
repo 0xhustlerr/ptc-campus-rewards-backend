@@ -3,6 +3,7 @@
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -116,7 +117,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=ErrorResponse(
                 detail="Validation error",
                 code="validation_error",
-                errors=list(exc.errors()),
+                errors=jsonable_encoder(list(exc.errors())),
             ).model_dump(),
         )
 

@@ -12,7 +12,12 @@ from app.models.student import Student
 from app.models.user import User
 from app.models.wallet import Wallet
 from app.models.audit_log import AuditLog
-from app.schemas.admin import AuditLogRead
+from app.schemas.admin import (
+    AuditLogRead,
+    PendingRegistrationRead,
+    PendingStudentProfileRead,
+    PendingVendorProfileRead,
+)
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleRead
 from app.schemas.ledger import LedgerEntryRead, LedgerTransactionRead
@@ -23,6 +28,34 @@ from app.schemas.wallet import WalletRead
 
 def user_to_read(user: User) -> UserRead:
     return UserRead.model_validate(user)
+
+
+def pending_registration_to_read(user: User) -> PendingRegistrationRead:
+    student_profile = None
+    if user.student:
+        student_profile = PendingStudentProfileRead(
+            student_number=user.student.student_number,
+            first_name=user.student.first_name,
+            last_name=user.student.last_name,
+            cohort=user.student.cohort,
+            program=user.student.program,
+        )
+    vendor_profile = None
+    if user.vendor:
+        vendor_profile = PendingVendorProfileRead(
+            name=user.vendor.name,
+            vendor_type=user.vendor.vendor_type,
+        )
+    return PendingRegistrationRead(
+        id=user.id,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        status=user.status,
+        created_at=user.created_at,
+        student_profile=student_profile,
+        vendor_profile=vendor_profile,
+    )
 
 
 def audit_log_to_read(log: AuditLog) -> AuditLogRead:

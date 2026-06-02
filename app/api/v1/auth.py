@@ -52,6 +52,13 @@ def self_register_user(db: DbSession, body: SelfRegisterRequest) -> UserRead:
         password=body.password,
         role=body.role,
         phone=body.phone,
+        student_number=body.student_number,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        cohort=body.cohort,
+        program=body.program,
+        vendor_name=body.vendor_name,
+        vendor_type=body.vendor_type,
     )
     return user_to_read(user)
 

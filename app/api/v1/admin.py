@@ -6,13 +6,15 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import AdminUser, DbSession
 from app.models.enums import UserStatus
-from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead
+from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead, PendingRegistrationRead
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleCreate, EarningRuleRead, EarningRuleUpdate
 from app.schemas.ledger import AdminAdjustmentRequest, AdminReversalRequest, LedgerTransactionRead
 from app.schemas.reward import RewardItemCreate, RewardItemRead, RewardItemUpdate
 from app.schemas.student import StudentListItem
 from app.schemas.wallet import WalletRead, WalletStatusUpdate
+from app.repositories.earning_rule import EarningRuleRepository
+from app.repositories.reward_item import RewardItemRepository
 from app.services.admin_service import AdminService
 from app.services.catalog_service import CatalogService
 from app.services.ledger_service import LedgerService
@@ -24,6 +26,7 @@ from app.utils.mappers import (
     reward_item_to_read,
     student_to_list_item,
     transaction_to_read,
+    pending_registration_to_read,
     user_to_read,
     wallet_to_read,
 )
@@ -71,10 +74,10 @@ def admin_audit_logs(
     return [audit_log_to_read(log) for log in AdminService(db).list_audit_logs(limit)]
 
 
-@router.get("/users/pending", response_model=list[UserRead])
-def admin_pending_users(db: DbSession, _: AdminUser) -> list[UserRead]:
-    users = UserAdminService(db).list_users_by_status(UserStatus.pending)
-    return [user_to_read(user) for user in users]
+@router.get("/users/pending", response_model=list[PendingRegistrationRead])
+def admin_pending_users(db: DbSession, _: AdminUser) -> list[PendingRegistrationRead]:
+    users = UserAdminService(db).list_pending_registrations()
+    return [pending_registration_to_read(user) for user in users]
 
 
 @router.patch("/users/{user_id}/status", response_model=UserRead)
@@ -84,7 +87,18 @@ def admin_update_user_status(
     db: DbSession,
     admin: AdminUser,
 ) -> UserRead:
-    user = UserAdminService(db).update_user_status(user_id, body.status, actor_id=admin.id)
+    user = UserAdminService(db).update_user_status(
+        user_id,
+        body.status,
+        actor_id=admin.id,
+        student_number=body.student_number,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        cohort=body.cohort,
+        program=body.program,
+        vendor_name=body.vendor_name,
+        vendor_type=body.vendor_type,
+    )
     return user_to_read(user)
 
 
@@ -100,6 +114,16 @@ def admin_adjustment(
 def admin_reversal(body: AdminReversalRequest, db: DbSession, admin: AdminUser) -> LedgerTransactionRead:
     tx = AdminService(db).apply_reversal(body, actor_id=admin.id)
     return transaction_to_read(tx)
+
+
+@router.get("/earning-rules", response_model=list[EarningRuleRead])
+def list_earning_rules_admin(db: DbSession, _: AdminUser) -> list[EarningRuleRead]:
+    return [earning_rule_to_read(r) for r in EarningRuleRepository(db).list_all()]
+
+
+@router.get("/reward-items", response_model=list[RewardItemRead])
+def list_reward_items_admin(db: DbSession, _: AdminUser) -> list[RewardItemRead]:
+    return [reward_item_to_read(i) for i in RewardItemRepository(db).list_all()]
 
 
 @router.post("/earning-rules", response_model=EarningRuleRead, status_code=201)
