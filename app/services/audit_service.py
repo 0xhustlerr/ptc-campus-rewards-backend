@@ -13,6 +13,8 @@ class AuditActions:
     USER_LOGIN = "user.login"
     USER_LOGOUT = "user.logout"
     USER_REGISTERED = "user.registered"
+    ADMIN_CREATED = "admin.created"
+    ADMIN_BOOTSTRAPPED = "admin.bootstrapped"
     USER_APPROVED = "user.approved"
     USER_REJECTED = "user.rejected"
     USER_STATUS_CHANGED = "user.status_changed"

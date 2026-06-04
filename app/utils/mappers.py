@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.wallet import Wallet
 from app.models.audit_log import AuditLog
 from app.schemas.admin import (
+    AdminAccountRead,
     AuditLogRead,
     PendingRegistrationRead,
     PendingStaffProfileRead,
@@ -42,6 +43,17 @@ def user_to_read(user: User) -> UserRead:
         role=user.role,
         status=user.status,
         staff_profile=staff_profile,
+    )
+
+
+def admin_account_to_read(user: User) -> AdminAccountRead:
+    return AdminAccountRead(
+        id=user.id,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        status=user.status,
+        created_at=user.created_at,
     )
 
 

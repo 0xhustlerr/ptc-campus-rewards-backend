@@ -91,6 +91,7 @@ The API and auth flows work without Celery; background jobs and scheduled tasks 
 | New migration | `alembic revision --autogenerate -m "description"` |
 | Seed (rules, catalog, dev users) | `python -m scripts.seed` |
 | Seed dev logins only | `python -m scripts.seed_users` |
+| Bootstrap first admin (production) | `ALLOW_ADMIN_BOOTSTRAP=true python -m scripts.create_admin --email admin@ptc.edu` |
 | Tests | `pytest` |
 | Celery worker | `celery -A app.workers.celery_app worker --loglevel=info` |
 | Celery beat | `celery -A app.workers.celery_app beat --loglevel=info` |
@@ -115,6 +116,21 @@ Attach JWT: `Authorization: Bearer <access_token>` from `POST /api/v1/auth/login
 | Vendor | `vendor@ptc.edu` | `CampusDev123!` |
 
 Local development only — do not use these credentials in production.
+
+### Admin accounts
+
+- **Development:** use `python -m scripts.seed_users` or sign in as `admin@ptc.edu`.
+- **Production (first admin):** bootstrap via CLI (not exposed on the public web):
+
+```bash
+ALLOW_ADMIN_BOOTSTRAP=true python -m scripts.create_admin --email admin@ptc.edu
+# Or generate a random password:
+ALLOW_ADMIN_BOOTSTRAP=true python -m scripts.create_admin --email admin@ptc.edu --generate-password
+```
+
+- **Additional admins:** an authenticated admin creates accounts via `POST /api/v1/admin/admins` or the Admin → Administrators page in the frontend.
+
+Public self-registration never allows the admin role.
 
 ## Auth endpoints
 

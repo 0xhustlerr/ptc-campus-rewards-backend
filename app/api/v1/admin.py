@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import AdminUser, DbSession
 from app.models.enums import UserStatus
-from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead, PendingRegistrationRead
+from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead, CreateAdminRequest, AdminAccountRead, PendingRegistrationRead
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleCreate, EarningRuleRead, EarningRuleUpdate
 from app.schemas.ledger import AdminAdjustmentRequest, AdminReversalRequest, LedgerTransactionRead
@@ -21,6 +21,7 @@ from app.services.ledger_service import LedgerService
 from app.services.student_service import StudentService
 from app.services.wallet_service import WalletService
 from app.utils.mappers import (
+    admin_account_to_read,
     audit_log_to_read,
     earning_rule_to_read,
     reward_item_to_read,
@@ -33,6 +34,27 @@ from app.utils.mappers import (
 from app.services.user_admin_service import UserAdminService
 
 router = APIRouter()
+
+
+@router.get("/admins", response_model=list[AdminAccountRead])
+def list_admin_accounts(db: DbSession, _: AdminUser) -> list[AdminAccountRead]:
+    users = UserAdminService(db).list_admins()
+    return [admin_account_to_read(user) for user in users]
+
+
+@router.post("/admins", response_model=AdminAccountRead, status_code=201)
+def create_admin_account(
+    body: CreateAdminRequest,
+    db: DbSession,
+    admin: AdminUser,
+) -> AdminAccountRead:
+    user = UserAdminService(db).create_admin(
+        email=body.email,
+        password=body.password,
+        phone=body.phone,
+        created_by=admin.id,
+    )
+    return admin_account_to_read(user)
 
 
 @router.get("/students", response_model=list[StudentListItem])

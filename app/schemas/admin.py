@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.models.enums import UserRole, UserStatus, VendorType, WalletStatus
 from app.schemas.common import ORMModel
@@ -51,6 +51,21 @@ class PendingRegistrationRead(ORMModel):
     student_profile: PendingStudentProfileRead | None = None
     staff_profile: PendingStaffProfileRead | None = None
     vendor_profile: PendingVendorProfileRead | None = None
+
+
+class CreateAdminRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    phone: str | None = None
+
+
+class AdminAccountRead(ORMModel):
+    id: UUID
+    email: str
+    phone: str | None
+    role: UserRole
+    status: UserStatus
+    created_at: datetime
 
 
 class AdminUserStatusUpdate(BaseModel):

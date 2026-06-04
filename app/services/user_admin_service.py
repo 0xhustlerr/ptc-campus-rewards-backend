@@ -27,6 +27,49 @@ class UserAdminService:
         self.users = UserRepository(db)
         self.audit = AuditService(db)
 
+    def create_admin(
+        self,
+        *,
+        email: str,
+        password: str,
+        phone: str | None = None,
+        created_by: uuid.UUID | None = None,
+        bootstrap: bool = False,
+    ) -> User:
+        normalized_email = email.lower()
+        if self.users.get_by_email(normalized_email):
+            raise ConflictError("Email already registered")
+
+        user = User(
+            email=normalized_email,
+            phone=phone,
+            hashed_password=hash_password(password),
+            role=UserRole.admin,
+            status=UserStatus.active,
+        )
+        self.users.create(user)
+
+        audit_action = AuditActions.ADMIN_BOOTSTRAPPED if bootstrap else AuditActions.ADMIN_CREATED
+        self.audit.record(
+            audit_action,
+            "user",
+            actor_user_id=created_by,
+            entity_id=str(user.id),
+            after={"email": user.email, "role": user.role.value},
+            commit=False,
+        )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def list_admins(self) -> list[User]:
+        stmt = (
+            select(User)
+            .where(User.role == UserRole.admin)
+            .order_by(User.created_at.desc())
+        )
+        return list(self.db.scalars(stmt).all())
+
     def register_user(self, data: RegisterUserRequest, *, created_by: uuid.UUID) -> User:
         if data.role == UserRole.admin:
             raise AppError(
