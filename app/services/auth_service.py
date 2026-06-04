@@ -92,6 +92,26 @@ class AuthService:
         self.tokens.revoke(stored)
         return self._issue_tokens(user)
 
+    def change_password(
+        self,
+        user_id: UUID,
+        *,
+        current_password: str,
+        new_password: str,
+    ) -> None:
+        user = self.users.get_by_id(user_id)
+        if not user or not verify_password(current_password, user.hashed_password):
+            raise UnauthorizedError("Invalid current password")
+        user.hashed_password = hash_password(new_password)
+        self.tokens.revoke_all_for_user(user_id)
+        self.audit.record(
+            AuditActions.USER_PASSWORD_CHANGED,
+            "user",
+            actor_user_id=user_id,
+            entity_id=str(user_id),
+            commit=True,
+        )
+
     def logout(self, refresh_token: str, *, current_user_id: UUID) -> None:
         stored = self.tokens.get_by_hash(_hash_token(refresh_token))
         if not stored:

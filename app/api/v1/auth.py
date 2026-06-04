@@ -8,6 +8,7 @@ from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
 from app.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
     LogoutRequest,
     RefreshTokenRequest,
@@ -73,8 +74,31 @@ def register_user(db: DbSession, body: RegisterUserRequest, admin: AdminUser) ->
     return user_to_read(user)
 
 
+@router.post("/change-password", status_code=204)
+@limiter.limit(settings.rate_limit_auth)
+def change_password(
+    request: Request,
+    db: DbSession,
+    body: ChangePasswordRequest,
+    current_user: CurrentUser,
+) -> None:
+    AuthService(db).change_password(
+        current_user.id,
+        current_password=body.current_password,
+        new_password=body.new_password,
+    )
+
+
 @router.get("/me", response_model=UserRead)
 def me(db: DbSession, current_user: CurrentUser) -> UserRead:
-    stmt = select(User).where(User.id == current_user.id).options(joinedload(User.staff))
+    stmt = (
+        select(User)
+        .where(User.id == current_user.id)
+        .options(
+            joinedload(User.student),
+            joinedload(User.staff),
+            joinedload(User.vendor),
+        )
+    )
     user = db.scalars(stmt).one()
     return user_to_read(user)

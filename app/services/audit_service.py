@@ -12,6 +12,7 @@ from app.repositories.audit_log import AuditLogRepository
 class AuditActions:
     USER_LOGIN = "user.login"
     USER_LOGOUT = "user.logout"
+    USER_PASSWORD_CHANGED = "user.password_changed"
     USER_REGISTERED = "user.registered"
     ADMIN_CREATED = "admin.created"
     ADMIN_BOOTSTRAPPED = "admin.bootstrapped"

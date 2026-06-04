@@ -29,6 +29,15 @@ from app.schemas.wallet import WalletRead
 
 
 def user_to_read(user: User) -> UserRead:
+    student_profile = None
+    if user.student:
+        student_profile = PendingStudentProfileRead(
+            student_number=user.student.student_number,
+            first_name=user.student.first_name,
+            last_name=user.student.last_name,
+            cohort=user.student.cohort,
+            program=user.student.program,
+        )
     staff_profile = None
     if user.staff:
         staff_profile = PendingStaffProfileRead(
@@ -36,13 +45,21 @@ def user_to_read(user: User) -> UserRead:
             last_name=user.staff.last_name,
             department=user.staff.department,
         )
+    vendor_profile = None
+    if user.vendor:
+        vendor_profile = PendingVendorProfileRead(
+            name=user.vendor.name,
+            vendor_type=user.vendor.vendor_type,
+        )
     return UserRead(
         id=user.id,
         email=user.email,
         phone=user.phone,
         role=user.role,
         status=user.status,
+        student_profile=student_profile,
         staff_profile=staff_profile,
+        vendor_profile=vendor_profile,
     )
 
 

@@ -3,7 +3,11 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from app.models.enums import UserRole, UserStatus, VendorType
-from app.schemas.admin import PendingStaffProfileRead
+from app.schemas.admin import (
+    PendingStaffProfileRead,
+    PendingStudentProfileRead,
+    PendingVendorProfileRead,
+)
 from app.schemas.common import ORMModel
 
 
@@ -20,6 +24,17 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def new_must_differ(self) -> "ChangePasswordRequest":
+        if self.current_password == self.new_password:
+            raise ValueError("New password must be different from current password")
+        return self
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -33,7 +48,9 @@ class UserRead(ORMModel):
     phone: str | None
     role: UserRole
     status: UserStatus
+    student_profile: PendingStudentProfileRead | None = None
     staff_profile: PendingStaffProfileRead | None = None
+    vendor_profile: PendingVendorProfileRead | None = None
 
 
 class RegisterUserRequest(BaseModel):
