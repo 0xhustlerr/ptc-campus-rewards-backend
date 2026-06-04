@@ -11,3 +11,6 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
