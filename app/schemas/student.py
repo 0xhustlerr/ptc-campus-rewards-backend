@@ -43,5 +43,6 @@ class StudentListItem(ORMModel):
     cohort: str | None
     program: str | None
     status: StudentStatus
+    email: str | None = None
     wallet_id: UUID | None = None
     balance: Decimal | None = None

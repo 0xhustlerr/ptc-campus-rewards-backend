@@ -150,6 +150,7 @@ def student_to_list_item(student: Student, balance: Decimal | None = None) -> St
         cohort=student.cohort,
         program=student.program,
         status=student.status,
+        email=student.user.email if student.user else None,
         wallet_id=student.wallet.id if student.wallet else None,
         balance=balance,
     )
