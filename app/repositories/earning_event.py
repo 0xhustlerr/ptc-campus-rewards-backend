@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.earning_event import EarningEvent
 from app.models.enums import EarningEventStatus
@@ -16,6 +16,27 @@ class EarningEventRepository:
         self.db.add(event)
         self.db.flush()
         return event
+
+    def get_by_id(self, event_id: uuid.UUID) -> EarningEvent | None:
+        return self.db.get(EarningEvent, event_id)
+
+    def get_by_idempotency_key(self, key: str) -> EarningEvent | None:
+        stmt = select(EarningEvent).where(EarningEvent.idempotency_key == key)
+        return self.db.scalars(stmt).first()
+
+    def get_for_update(self, event_id: uuid.UUID) -> EarningEvent | None:
+        """Lock a single event row to serialize approve/reject transitions."""
+        stmt = select(EarningEvent).where(EarningEvent.id == event_id).with_for_update()
+        return self.db.scalars(stmt).first()
+
+    def list_pending(self) -> list[EarningEvent]:
+        stmt = (
+            select(EarningEvent)
+            .options(joinedload(EarningEvent.student), joinedload(EarningEvent.rule))
+            .where(EarningEvent.status == EarningEventStatus.pending)
+            .order_by(EarningEvent.created_at.asc())
+        )
+        return list(self.db.scalars(stmt).all())
 
     def count_rule_usage(
         self,

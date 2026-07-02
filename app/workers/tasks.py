@@ -3,7 +3,7 @@
 import logging
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -32,13 +32,15 @@ def expire_old_qr_sessions() -> dict:
     db = SessionLocal()
     try:
         now = datetime.now(UTC)
-        count = db.scalar(
-            select(func.count())
-            .select_from(QRSession)
-            .where(QRSession.expires_at < now, QRSession.used_at.is_(None))
+        result = db.execute(
+            delete(QRSession).where(
+                QRSession.expires_at < now, QRSession.used_at.is_(None)
+            )
         )
-        logger.info("Expired unused QR sessions: %s", count)
-        return {"expired_unused_sessions": int(count or 0)}
+        db.commit()
+        count = result.rowcount or 0
+        logger.info("Purged expired unused QR sessions: %s", count)
+        return {"expired_unused_sessions": int(count)}
     finally:
         db.close()
 

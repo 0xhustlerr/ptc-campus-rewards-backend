@@ -38,6 +38,11 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# Precomputed bcrypt hash used to equalize timing when an email does not exist,
+# so login latency cannot be used to enumerate valid accounts.
+_DUMMY_PASSWORD_HASH = hash_password("timing-attack-mitigation-placeholder")
+
+
 class AuthService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -47,7 +52,12 @@ class AuthService:
 
     def login(self, email: str, password: str) -> TokenResponse:
         user = self.users.get_by_email(email.lower())
-        if not user or not verify_password(password, user.hashed_password):
+        if not user:
+            # Perform a dummy hash comparison so a missing account takes the same
+            # time as an existing one, preventing user-enumeration via timing.
+            verify_password(password, _DUMMY_PASSWORD_HASH)
+            raise UnauthorizedError("Invalid email or password")
+        if not verify_password(password, user.hashed_password):
             raise UnauthorizedError("Invalid email or password")
         if user.status == UserStatus.pending:
             raise AccountPendingApprovalError()
@@ -89,7 +99,11 @@ class AuthService:
         if not user or user.status != UserStatus.active:
             raise UnauthorizedError("User not found")
 
-        self.tokens.revoke(stored)
+        # Atomically consume the refresh token. If a concurrent request already
+        # rotated it, this returns False and we reject rather than minting a
+        # second token pair from the same (single-use) refresh token.
+        if not self.tokens.revoke_if_active(stored.id):
+            raise UnauthorizedError("Refresh token revoked")
         return self._issue_tokens(user)
 
     def change_password(

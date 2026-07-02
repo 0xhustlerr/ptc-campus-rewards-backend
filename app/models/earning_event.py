@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,13 @@ class EarningEvent(Base, UUIDPrimaryKeyMixin):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128),
+        unique=True,
+        nullable=True,
+        index=True,
+        doc="Dedupes issue-reward requests across immediate and approval paths",
+    )
     status: Mapped[EarningEventStatus] = mapped_column(
         Enum(EarningEventStatus, name="earning_event_status"),
         nullable=False,

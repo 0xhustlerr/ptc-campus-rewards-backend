@@ -22,7 +22,7 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleRead
-from app.schemas.ledger import LedgerEntryRead, LedgerTransactionRead
+from app.schemas.ledger import EarningEventRead, LedgerEntryRead, LedgerTransactionRead
 from app.schemas.reward import RedemptionRead, RewardItemRead
 from app.schemas.student import StudentListItem, StudentRead
 from app.schemas.wallet import WalletRead
@@ -170,6 +170,21 @@ def reward_item_to_read(item: RewardItem) -> RewardItemRead:
 
 def redemption_to_read(r: Redemption) -> RedemptionRead:
     return RedemptionRead.model_validate(r)
+
+
+def earning_event_to_read(event: EarningEvent) -> EarningEventRead:
+    return EarningEventRead(
+        id=event.id,
+        student_id=event.student_id,
+        student_name=event.student.full_name if event.student else None,
+        rule_id=event.rule_id,
+        rule_name=event.rule.name if event.rule else None,
+        amount=event.amount,
+        notes=event.notes,
+        status=event.status.value,
+        ledger_transaction_id=event.ledger_transaction_id,
+        created_at=event.created_at,
+    )
 
 
 def transaction_to_read(tx: LedgerTransaction) -> LedgerTransactionRead:

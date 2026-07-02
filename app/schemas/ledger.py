@@ -43,6 +43,19 @@ class IssueRewardResponse(BaseModel):
     status: str
 
 
+class EarningEventRead(BaseModel):
+    id: UUID
+    student_id: UUID
+    student_name: str | None = None
+    rule_id: UUID
+    rule_name: str | None = None
+    amount: Decimal
+    notes: str | None = None
+    status: str
+    ledger_transaction_id: UUID | None = None
+    created_at: datetime
+
+
 class VendorScanRequest(BaseModel):
     qr_session_token: str
 

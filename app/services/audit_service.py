@@ -20,6 +20,8 @@ class AuditActions:
     USER_REJECTED = "user.rejected"
     USER_STATUS_CHANGED = "user.status_changed"
     REWARD_ISSUED = "reward.issued"
+    REWARD_APPROVED = "reward.approved"
+    REWARD_REJECTED = "reward.rejected"
     REDEMPTION_COMPLETED = "redemption.completed"
     ADMIN_ADJUSTMENT = "admin.adjustment"
     TRANSACTION_REVERSAL = "transaction.reversal"

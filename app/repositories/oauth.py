@@ -23,6 +23,22 @@ class OAuthTokenRepository:
     def revoke(self, token: OAuthRefreshToken) -> None:
         token.revoked_at = datetime.now(UTC)
 
+    def revoke_if_active(self, token_id: UUID) -> bool:
+        """Atomically revoke a token only if not already revoked.
+
+        Returns True if this call performed the revocation (exactly-once),
+        so concurrent refreshes of the same token cannot both succeed.
+        """
+        result = self.db.execute(
+            update(OAuthRefreshToken)
+            .where(
+                OAuthRefreshToken.id == token_id,
+                OAuthRefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC))
+        )
+        return result.rowcount == 1
+
     def revoke_all_for_user(self, user_id: UUID) -> None:
         now = datetime.now(UTC)
         self.db.execute(

@@ -9,7 +9,12 @@ from app.models.enums import UserStatus
 from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead, CreateAdminRequest, AdminAccountRead, PendingRegistrationRead
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleCreate, EarningRuleRead, EarningRuleUpdate
-from app.schemas.ledger import AdminAdjustmentRequest, AdminReversalRequest, LedgerTransactionRead
+from app.schemas.ledger import (
+    AdminAdjustmentRequest,
+    AdminReversalRequest,
+    EarningEventRead,
+    LedgerTransactionRead,
+)
 from app.schemas.reward import RewardItemCreate, RewardItemRead, RewardItemUpdate
 from app.schemas.student import StudentListItem
 from app.schemas.wallet import WalletRead, WalletStatusUpdate
@@ -17,12 +22,14 @@ from app.repositories.earning_rule import EarningRuleRepository
 from app.repositories.reward_item import RewardItemRepository
 from app.services.admin_service import AdminService
 from app.services.catalog_service import CatalogService
+from app.services.earning_service import EarningService
 from app.services.ledger_service import LedgerService
 from app.services.student_service import StudentService
 from app.services.wallet_service import WalletService
 from app.utils.mappers import (
     admin_account_to_read,
     audit_log_to_read,
+    earning_event_to_read,
     earning_rule_to_read,
     reward_item_to_read,
     student_to_list_item,
@@ -123,6 +130,27 @@ def admin_update_user_status(
         vendor_type=body.vendor_type,
     )
     return user_to_read(user)
+
+
+@router.get("/earning-events/pending", response_model=list[EarningEventRead])
+def admin_pending_earning_events(db: DbSession, _: AdminUser) -> list[EarningEventRead]:
+    return [earning_event_to_read(e) for e in EarningService(db).list_pending_events()]
+
+
+@router.post("/earning-events/{event_id}/approve", response_model=EarningEventRead)
+def admin_approve_earning_event(
+    event_id: UUID, db: DbSession, admin: AdminUser
+) -> EarningEventRead:
+    event = EarningService(db).approve_event(event_id, approver_id=admin.id)
+    return earning_event_to_read(event)
+
+
+@router.post("/earning-events/{event_id}/reject", response_model=EarningEventRead)
+def admin_reject_earning_event(
+    event_id: UUID, db: DbSession, admin: AdminUser
+) -> EarningEventRead:
+    event = EarningService(db).reject_event(event_id, approver_id=admin.id)
+    return earning_event_to_read(event)
 
 
 @router.post("/adjustments", response_model=LedgerTransactionRead)
