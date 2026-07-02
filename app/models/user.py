@@ -1,6 +1,8 @@
 """User accounts — authentication and role."""
 
-from sqlalchemy import Enum, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -13,6 +15,11 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Access tokens issued before this instant are rejected",
+    )
     role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"), nullable=False)
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, name="user_status"),

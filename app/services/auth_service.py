@@ -117,6 +117,10 @@ class AuthService:
         if not user or not verify_password(current_password, user.hashed_password):
             raise UnauthorizedError("Invalid current password")
         user.hashed_password = hash_password(new_password)
+        # Invalidate every previously-issued token: refresh tokens are revoked
+        # here, and stamping password_changed_at causes get_current_user to
+        # reject any access token issued before this instant.
+        user.password_changed_at = datetime.now(UTC)
         self.tokens.revoke_all_for_user(user_id)
         self.audit.record(
             AuditActions.USER_PASSWORD_CHANGED,

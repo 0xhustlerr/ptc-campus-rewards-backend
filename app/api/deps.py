@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC
 from typing import Annotated
 
 from fastapi import Depends
@@ -31,6 +32,17 @@ def get_current_user(
     user = UserRepository(db).get_by_id(parse_user_id(payload.get("sub")))
     if not user or user.status != UserStatus.active:
         raise UnauthorizedError("User not found or inactive")
+
+    # Reject access tokens minted before the user's last password change.
+    # JWT `iat` has whole-second granularity, so compare at that resolution to
+    # avoid rejecting a token re-issued in the same second as the change.
+    if user.password_changed_at is not None:
+        issued_at = payload.get("iat")
+        changed_at = user.password_changed_at
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=UTC)
+        if issued_at is None or int(issued_at) < int(changed_at.timestamp()):
+            raise UnauthorizedError("Session expired, please sign in again")
     return user
 
 

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     rate_limit_auth: str = "10/minute"
     rate_limit_qr_scan: str = "30/minute"
     rate_limit_redeem: str = "20/minute"
+    # Number of trusted reverse proxies in front of the app. When > 0, the
+    # client IP for rate limiting is taken from X-Forwarded-For at this depth
+    # from the right (the proxy-appended, trustworthy end). Keep 0 when the app
+    # is exposed directly so spoofed X-Forwarded-For headers are ignored.
+    trusted_proxy_count: int = 0
+
+    campus_timezone: str = "UTC"
 
     default_page_size: int = 50
     max_page_size: int = 200

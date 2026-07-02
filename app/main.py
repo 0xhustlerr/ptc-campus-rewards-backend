@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -14,6 +15,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.rate_limit import limiter
 from app.schemas.common import HealthResponse
+from app.utils.health import check_database, check_redis
 
 settings = get_settings()
 
@@ -56,9 +58,27 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 def root_health() -> HealthResponse:
+    """Liveness — the process is up and serving requests."""
     return HealthResponse(
         status="ok",
         service=settings.app_name,
         version=settings.app_version,
         environment=settings.environment,
+    )
+
+
+@app.get("/health/ready", tags=["health"])
+def readiness() -> JSONResponse:
+    """Readiness — reports 503 when a critical dependency is unavailable so a
+    load balancer stops routing traffic to a broken instance."""
+    database = check_database()
+    redis = check_redis()
+    ok = database == "ok" and redis == "ok"
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={
+            "status": "ready" if ok else "not_ready",
+            "database": database,
+            "redis": redis,
+        },
     )

@@ -1,11 +1,23 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import get_settings
 from app.models.earning_event import EarningEvent
 from app.models.enums import EarningEventStatus
+
+
+def _campus_day_start_utc() -> datetime:
+    """Start of 'today' in the configured campus timezone, expressed in UTC."""
+    try:
+        tz = ZoneInfo(get_settings().campus_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = UTC
+    local_midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    return local_midnight.astimezone(UTC)
 
 
 class EarningEventRepository:
@@ -56,7 +68,7 @@ class EarningEventRepository:
         return int(self.db.scalar(stmt) or 0)
 
     def daily_count(self, student_id: uuid.UUID, rule_id: uuid.UUID) -> int:
-        since = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        since = _campus_day_start_utc()
         return self.count_rule_usage(student_id, rule_id, since=since)
 
     def weekly_count(self, student_id: uuid.UUID, rule_id: uuid.UUID) -> int:

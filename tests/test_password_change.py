@@ -60,6 +60,48 @@ def test_change_password_same_as_current(client: TestClient, student_with_wallet
     assert response.status_code == 422
 
 
+def _backdated_access_token(user: User, *, seconds_ago: int) -> str:
+    """Mint an access token with an `iat` in the past (real tokens predate a
+    later password change; without this the test would collide within 1s)."""
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4
+
+    from jose import jwt
+
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    issued = datetime.now(UTC) - timedelta(seconds=seconds_ago)
+    payload = {
+        "sub": str(user.id),
+        "role": user.role.value,
+        "type": "access",
+        "iat": issued,
+        "exp": issued + timedelta(minutes=30),
+        "jti": str(uuid4()),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def test_access_token_invalidated_after_password_change(client: TestClient, student_with_wallet):
+    user = student_with_wallet.user
+    token = _backdated_access_token(user, seconds_ago=60)
+    header = {"Authorization": f"Bearer {token}"}
+
+    # Token works before the change.
+    assert client.get("/api/v1/auth/me", headers=header).status_code == 200
+
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        headers=header,
+        json={"current_password": "password123", "new_password": "newSecure99!"},
+    )
+    assert changed.status_code == 204
+
+    # The same access token (issued before the change) is now rejected.
+    assert client.get("/api/v1/auth/me", headers=header).status_code == 401
+
+
 def test_change_password_admin(client: TestClient, db_session):
     admin = User(
         email=f"admin-{uuid4()}@ptc.edu",
