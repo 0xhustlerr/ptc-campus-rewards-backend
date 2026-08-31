@@ -2,9 +2,10 @@
 
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.earning_rule import EarningRule
 from app.models.reward_item import RewardItem
 from app.repositories.earning_rule import EarningRuleRepository
@@ -22,8 +23,17 @@ class CatalogService:
         self.audit = AuditService(db)
 
     def create_earning_rule(self, data: EarningRuleCreate, *, actor_id: UUID) -> EarningRule:
+        if self.rules.get_by_code(data.code):
+            raise ConflictError(f"An earning rule with code “{data.code}” already exists.")
         rule = EarningRule(**data.model_dump())
-        self.rules.create(rule)
+        try:
+            self.rules.create(rule)
+        except IntegrityError as exc:
+            # Another admin created the same code between the check and the insert.
+            self.db.rollback()
+            raise ConflictError(
+                f"An earning rule with code “{data.code}” already exists."
+            ) from exc
         self.audit.record(
             AuditActions.EARNING_RULE_CREATED,
             "earning_rule",

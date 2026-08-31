@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.middleware import RequestLoggingMiddleware
+from app.api.middleware import RequestLoggingMiddleware, UnhandledErrorMiddleware
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
@@ -44,6 +44,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 register_exception_handlers(app)
 
+# Added first, so it is the innermost middleware: it converts unhandled errors to
+# a JSON response before CORSMiddleware runs, letting the browser read the body.
+app.add_middleware(UnhandledErrorMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.backend_cors_origins,
