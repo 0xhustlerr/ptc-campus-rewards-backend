@@ -100,6 +100,8 @@ def test_admin_can_register_user_via_admin_endpoint(client: TestClient, db_sessi
             "email": f"newstudent-{uuid4()}@ptc.edu",
             "password": "password123",
             "role": "staff",
+            "first_name": "New",
+            "last_name": "Staff",
         },
     )
     assert response.status_code == 201

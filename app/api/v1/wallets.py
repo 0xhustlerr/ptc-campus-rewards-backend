@@ -8,7 +8,7 @@ from app.api.deps import CurrentUser, DbSession, StudentUser, require_own_wallet
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.schemas.ledger import LedgerTransactionRead, QRSessionResponse
-from app.schemas.wallet import WalletBalanceRead, WalletMeRead
+from app.schemas.wallet import WalletBalanceRead, WalletMeRead, WalletTotalsRead
 from app.services.redemption_service import RedemptionService
 from app.services.student_service import StudentService
 from app.services.wallet_service import WalletService
@@ -61,6 +61,21 @@ def wallet_balance(wallet_id: UUID, db: DbSession, user: CurrentUser) -> WalletB
         currency_code=wallet.currency_code,
         balance=wallet_svc.get_balance(wallet_id),
         status=wallet.status,
+    )
+
+
+@router.get("/{wallet_id}/totals", response_model=WalletTotalsRead)
+def wallet_totals(wallet_id: UUID, db: DbSession, user: CurrentUser) -> WalletTotalsRead:
+    require_own_wallet(wallet_id, user, db)
+    wallet_svc = WalletService(db)
+    if not wallet_svc.wallets.get_by_id(wallet_id):
+        raise NotFoundError("Wallet not found")
+    earned, redeemed = wallet_svc.get_totals(wallet_id)
+    return WalletTotalsRead(
+        wallet_id=wallet_id,
+        balance=wallet_svc.get_balance(wallet_id),
+        total_earned=earned,
+        total_redeemed=redeemed,
     )
 
 

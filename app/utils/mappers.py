@@ -110,10 +110,11 @@ def pending_registration_to_read(user: User) -> PendingRegistrationRead:
     )
 
 
-def audit_log_to_read(log: AuditLog) -> AuditLogRead:
+def audit_log_to_read(log: AuditLog, actor_email: str | None = None) -> AuditLogRead:
     return AuditLogRead(
         id=log.id,
         actor_user_id=log.actor_user_id,
+        actor_email=actor_email,
         action=log.action,
         entity_type=log.entity_type,
         entity_id=log.entity_id,
@@ -197,7 +198,6 @@ def transaction_to_read(tx: LedgerTransaction) -> LedgerTransactionRead:
         status=tx.status,
         reference_type=tx.reference_type,
         reference_id=tx.reference_id,
-        idempotency_key=tx.idempotency_key,
         amount=amount,
         created_at=tx.created_at,
         entries=[LedgerEntryRead.model_validate(e) for e in tx.entries],

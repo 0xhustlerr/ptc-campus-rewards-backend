@@ -12,8 +12,6 @@ from app.core.config import get_settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 settings = get_settings()
 
-_PROTECTED_CLAIMS = frozenset({"sub", "role", "type", "exp", "iat", "jti"})
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)

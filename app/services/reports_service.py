@@ -196,14 +196,16 @@ class ReportsService:
         top_item_row = self.db.execute(top_item_stmt).first()
         return {
             "date": today.isoformat(),
-            "total_issued_today": overview.get("total_ptc_issued"),
-            "total_redeemed_today": overview.get("total_ptc_redeemed"),
+            "total_issued_today": str(self._sum_by_tx_type(TransactionType.earn, on_date=today)),
+            "total_redeemed_today": str(
+                self._sum_by_tx_type(TransactionType.redeem, on_date=today)
+            ),
             "active_students": overview["total_students"],
             "top_earning_rule": top_rule[0] if top_rule else None,
             "top_reward_item": top_item_row[0] if top_item_row else None,
         }
 
-    def _sum_by_tx_type(self, tx_type: TransactionType) -> Decimal:
+    def _sum_by_tx_type(self, tx_type: TransactionType, *, on_date: date | None = None) -> Decimal:
         stmt = (
             select(func.coalesce(func.sum(LedgerEntry.amount), 0))
             .join(LedgerTransaction)
@@ -215,6 +217,8 @@ class ReportsService:
                 LedgerEntry.direction == EntryDirection.debit,
             )
         )
+        if on_date is not None:
+            stmt = stmt.where(func.date(LedgerTransaction.created_at) == on_date)
         return Decimal(str(self.db.scalar(stmt) or 0))
 
     def _outstanding_balance(self) -> Decimal:

@@ -3,6 +3,7 @@
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError, NotFoundError
@@ -33,10 +34,15 @@ class EarningService:
         idempotency_key: str,
         issued_by: UUID,
     ) -> EarningEvent:
+        # Scope the client-chosen key to the issuing staff member so two staff
+        # cannot collide on a shared key, and a key harvested from another
+        # transaction type can never resolve here.
+        scoped_key = f"issue:{issued_by}:{idempotency_key}"
+
         # Idempotency covers BOTH the immediate-post and approval-required paths:
         # a pending event has no ledger transaction yet, so we dedupe on the
         # event's own key rather than the ledger key.
-        existing = self.events.get_by_idempotency_key(idempotency_key)
+        existing = self.events.get_by_idempotency_key(scoped_key)
         if existing:
             return existing
 
@@ -53,6 +59,13 @@ class EarningService:
         # cannot both pass a daily/weekly limit check (check-then-act race).
         # On Postgres this is a real row lock; on SQLite it is a harmless no-op.
         self.ledger.accounts.lock_student_wallet_account(student.wallet.id)
+
+        # Double-checked locking: a concurrent request with the same key may have
+        # committed while we waited for the lock. Re-read so we return its event
+        # rather than colliding on the unique idempotency key below.
+        existing = self.events.get_by_idempotency_key(scoped_key)
+        if existing:
+            return existing
 
         if rule.daily_limit is not None:
             if self.events.daily_count(student_id, earning_rule_id) >= rule.daily_limit:
@@ -71,15 +84,25 @@ class EarningService:
             notes=notes,
             status=status,
             issued_by=issued_by,
-            idempotency_key=idempotency_key,
+            idempotency_key=scoped_key,
         )
-        self.events.create(event)
+        try:
+            self.events.create(event)
+        except IntegrityError:
+            # A concurrent request the wallet lock didn't serialize (e.g. the same
+            # key reused across students) won the unique idempotency key. Roll back
+            # and return the committed event instead of surfacing a 500.
+            self.db.rollback()
+            existing = self.events.get_by_idempotency_key(scoped_key)
+            if existing:
+                return existing
+            raise
 
         if status == EarningEventStatus.posted:
             tx = self.ledger.earn(
                 wallet_id=student.wallet.id,
                 amount=amount,
-                idempotency_key=idempotency_key,
+                idempotency_key=scoped_key,
                 created_by=issued_by,
                 reference_type="earning_event",
                 reference_id=str(event.id),

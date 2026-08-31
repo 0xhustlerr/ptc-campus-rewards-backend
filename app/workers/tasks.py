@@ -2,8 +2,9 @@
 
 import logging
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -93,52 +94,83 @@ def generate_admin_metrics_snapshot() -> dict:
 @celery_app.task(name="app.workers.tasks.weekly_perfect_attendance_bonus")
 def weekly_perfect_attendance_bonus() -> dict:
     db = SessionLocal()
+    try:
+        return run_weekly_perfect_attendance_bonus(db)
+    finally:
+        db.close()
+
+
+def run_weekly_perfect_attendance_bonus(db) -> dict:
+    """Core of the weekly bonus job, separated from session management so it can
+    be exercised against a test session."""
     issued = 0
     skipped = 0
+    SystemAccountsService(db).ensure_system_accounts()
+    rules_repo = EarningRuleRepository(db)
+    attendance_rule = rules_repo.get_by_code(settings.attendance_rule_code)
+    bonus_rule = rules_repo.get_by_code(settings.perfect_attendance_rule_code)
+    if not attendance_rule or not bonus_rule:
+        return {"issued": 0, "error": "rules_missing"}
+
+    # Evaluate the PREVIOUS, fully-completed week. The task fires Monday 06:00
+    # UTC; the week that just started has at most one attendance day so far, so
+    # scoring it would never reach the required threshold (the bonus would never
+    # pay out). Back up seven days to the prior Monday–Sunday.
+    today = date.today()
+    this_monday = today - timedelta(days=today.weekday())
+    week_start = this_monday - timedelta(days=7)
+    week_end = week_start + timedelta(days=6)
+    # Label the idempotency key and notes by the week actually scored.
+    iso_year, iso_week, _ = week_start.isocalendar()
+    required_days = settings.required_attendance_days_per_week
+
+    week_start_dt = datetime.combine(week_start, datetime.min.time()).replace(tzinfo=UTC)
+    week_end_dt = datetime.combine(week_end + timedelta(days=1), datetime.min.time()).replace(
+        tzinfo=UTC
+    )
+
     try:
-        SystemAccountsService(db).ensure_system_accounts()
-        rules_repo = EarningRuleRepository(db)
-        attendance_rule = rules_repo.get_by_code(settings.attendance_rule_code)
-        bonus_rule = rules_repo.get_by_code(settings.perfect_attendance_rule_code)
-        if not attendance_rule or not bonus_rule:
-            return {"issued": 0, "error": "rules_missing"}
+        campus_tz = ZoneInfo(settings.campus_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        campus_tz = UTC
 
-        today = date.today()
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
-        iso_year, iso_week, _ = today.isocalendar()
-        required_days = settings.required_attendance_days_per_week
+    earning_svc = EarningService(db)
+    for student in StudentRepository(db).list_all():
+        if student.status != StudentStatus.active or not student.wallet:
+            skipped += 1
+            continue
 
-        week_start_dt = datetime.combine(week_start, datetime.min.time()).replace(tzinfo=UTC)
-        week_end_dt = datetime.combine(week_end + timedelta(days=1), datetime.min.time()).replace(
-            tzinfo=UTC
-        )
+        idempotency_key = f"perfect-attendance-{student.id}-{iso_year}-W{iso_week:02d}"
+        if earning_svc.ledger.get_by_idempotency_key(idempotency_key):
+            skipped += 1
+            continue
 
-        earning_svc = EarningService(db)
-        for student in StudentRepository(db).list_all():
-            if student.status != StudentStatus.active or not student.wallet:
-                skipped += 1
-                continue
-
-            idempotency_key = f"perfect-attendance-{student.id}-{iso_year}-W{iso_week:02d}"
-            if earning_svc.ledger.get_by_idempotency_key(idempotency_key):
-                skipped += 1
-                continue
-
-            distinct_days = db.scalar(
-                select(func.count(func.distinct(func.date(EarningEvent.created_at)))).where(
-                    EarningEvent.student_id == student.id,
-                    EarningEvent.rule_id == attendance_rule.id,
-                    EarningEvent.status == EarningEventStatus.posted,
-                    EarningEvent.created_at >= week_start_dt,
-                    EarningEvent.created_at < week_end_dt,
-                )
+        # Count distinct attendance days in the CAMPUS timezone. Bucketing in
+        # Python (rather than SQL func.date, which is UTC) keeps two local days
+        # around UTC midnight from collapsing into one — which would wrongly deny
+        # the bonus — and stays portable across SQLite/Postgres.
+        timestamps = db.scalars(
+            select(EarningEvent.created_at).where(
+                EarningEvent.student_id == student.id,
+                EarningEvent.rule_id == attendance_rule.id,
+                EarningEvent.status == EarningEventStatus.posted,
+                EarningEvent.created_at >= week_start_dt,
+                EarningEvent.created_at < week_end_dt,
             )
+        ).all()
+        local_days = {
+            (ts if ts.tzinfo else ts.replace(tzinfo=UTC)).astimezone(campus_tz).date()
+            for ts in timestamps
+        }
 
-            if int(distinct_days or 0) < required_days:
-                skipped += 1
-                continue
+        if len(local_days) < required_days:
+            skipped += 1
+            continue
 
+        # Isolate per-student failures (frozen wallet, limits, unexpected errors)
+        # so one bad student cannot abort the whole batch and permanently skip
+        # everyone after them.
+        try:
             earning_svc.issue_reward(
                 student_id=student.id,
                 earning_rule_id=bonus_rule.id,
@@ -147,7 +179,15 @@ def weekly_perfect_attendance_bonus() -> dict:
                 issued_by=student.user_id,
             )
             issued += 1
+        except Exception:
+            db.rollback()
+            logger.warning(
+                "Perfect-attendance bonus skipped for student %s (week %s-W%02d)",
+                student.id,
+                iso_year,
+                iso_week,
+                exc_info=True,
+            )
+            skipped += 1
 
-        return {"issued": issued, "skipped": skipped, "week": f"{iso_year}-W{iso_week:02d}"}
-    finally:
-        db.close()
+    return {"issued": issued, "skipped": skipped, "week": f"{iso_year}-W{iso_week:02d}"}

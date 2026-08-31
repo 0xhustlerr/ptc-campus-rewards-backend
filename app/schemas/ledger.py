@@ -22,7 +22,6 @@ class LedgerTransactionRead(ORMModel):
     status: TransactionStatus
     reference_type: str | None
     reference_id: str | None
-    idempotency_key: str
     amount: Decimal = Field(description="PTC Credits moved")
     created_at: datetime
     entries: list[LedgerEntryRead] = []

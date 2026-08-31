@@ -50,7 +50,8 @@ def logout(
 
 
 @router.post("/register", response_model=UserRead, status_code=201, summary="Self-register account (pending admin approval)")
-def self_register_user(db: DbSession, body: SelfRegisterRequest) -> UserRead:
+@limiter.limit(settings.rate_limit_auth)
+def self_register_user(request: Request, db: DbSession, body: SelfRegisterRequest) -> UserRead:
     user = AuthService(db).self_register(
         email=body.email,
         password=body.password,

@@ -56,3 +56,39 @@ def test_duplicate_earning_rule_code_returns_conflict(client: TestClient, db_ses
     # The session survives the rejected insert.
     listing = client.get("/api/v1/admin/earning-rules", headers=headers)
     assert listing.status_code == 200
+
+
+def test_earning_rule_rejects_non_positive_amount(client: TestClient, db_session):
+    admin = _admin(db_session)
+    headers = _auth_header(admin)
+    payload = _payload(f"RULE_{uuid4().hex[:6]}")
+    payload["token_amount"] = "0"
+    response = client.post("/api/v1/admin/earning-rules", headers=headers, json=payload)
+    assert response.status_code == 422
+
+
+def test_reward_item_rejects_negative_inventory(client: TestClient, db_session):
+    admin = _admin(db_session)
+    headers = _auth_header(admin)
+    response = client.post(
+        "/api/v1/admin/reward-items",
+        headers=headers,
+        json={
+            "name": "Cap",
+            "category": "student_perks",
+            "price_tokens": "0",
+            "inventory_count": -1,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_health_detail_requires_admin(client: TestClient, db_session):
+    # Unauthenticated: version + dependency status must not be exposed.
+    unauth = client.get("/api/v1/health/detail")
+    assert unauth.status_code == 401
+
+    admin = _admin(db_session)
+    ok = client.get("/api/v1/health/detail", headers=_auth_header(admin))
+    assert ok.status_code == 200
+    assert "version" in ok.json()

@@ -1,20 +1,32 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
-from app.models.enums import UserRole, UserStatus, VendorType, WalletStatus
+from app.models.enums import RedemptionStatus, UserRole, UserStatus, VendorType, WalletStatus
 from app.schemas.common import ORMModel
 
 
 class AuditLogRead(ORMModel):
     id: UUID
     actor_user_id: UUID | None
+    actor_email: str | None = None
     action: str
     entity_type: str
     entity_id: str | None
     before: dict | None = None
     after: dict | None = None
+    created_at: datetime
+
+
+class AdminRedemptionRead(BaseModel):
+    id: UUID
+    student_name: str
+    vendor_name: str
+    item_name: str
+    amount: Decimal
+    status: RedemptionStatus
     created_at: datetime
 
 

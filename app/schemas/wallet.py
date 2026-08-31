@@ -32,3 +32,10 @@ class WalletMeRead(WalletBalanceRead):
 
 class WalletStatusUpdate(BaseModel):
     status: WalletStatus
+
+
+class WalletTotalsRead(BaseModel):
+    wallet_id: UUID
+    balance: Decimal
+    total_earned: Decimal
+    total_redeemed: Decimal

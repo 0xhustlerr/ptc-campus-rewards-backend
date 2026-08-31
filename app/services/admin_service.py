@@ -6,8 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
 from app.models.enums import WalletStatus
+from app.models.redemption import Redemption
 from app.models.wallet import Wallet
 from app.repositories.audit_log import AuditLogRepository
+from app.repositories.redemption import RedemptionRepository
+from app.repositories.user import UserRepository
 from app.schemas.ledger import AdminAdjustmentRequest, AdminReversalRequest
 from app.services.audit_service import AuditActions, AuditService
 from app.services.ledger_service import LedgerService
@@ -21,6 +24,8 @@ class AdminService:
         self.ledger = LedgerService(db)
         self.audit = AuditService(db)
         self.audit_logs = AuditLogRepository(db)
+        self.redemptions = RedemptionRepository(db)
+        self.users = UserRepository(db)
 
     def update_wallet_status(
         self, wallet_id: UUID, status: WalletStatus, *, actor_id: UUID
@@ -30,11 +35,13 @@ class AdminService:
             raise NotFoundError("Wallet not found")
         before = wallet.status.value
         wallet.status = status
-        action = (
-            AuditActions.WALLET_FROZEN
-            if status == WalletStatus.frozen
-            else AuditActions.WALLET_UNFROZEN
-        )
+        # Log the action that matches the target status rather than a binary
+        # frozen/unfrozen, so "closed" isn't recorded as "unfrozen".
+        action = {
+            WalletStatus.frozen: AuditActions.WALLET_FROZEN,
+            WalletStatus.closed: AuditActions.WALLET_CLOSED,
+            WalletStatus.active: AuditActions.WALLET_ACTIVATED,
+        }.get(status, AuditActions.WALLET_UNFROZEN)
         self.audit.record(
             action,
             "wallet",
@@ -84,3 +91,15 @@ class AdminService:
 
     def list_audit_logs(self, limit: int) -> list:
         return self.audit_logs.list_recent(limit)
+
+    def list_redemptions(self, limit: int = 200) -> list[Redemption]:
+        return self.redemptions.list_all(limit)
+
+    def resolve_actor_emails(self, actor_ids: list[UUID]) -> dict[UUID, str]:
+        """Map distinct actor user ids to emails for human-readable audit logs."""
+        emails: dict[UUID, str] = {}
+        for actor_id in set(actor_ids):
+            user = self.users.get_by_id(actor_id)
+            if user:
+                emails[actor_id] = user.email
+        return emails

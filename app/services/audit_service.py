@@ -31,6 +31,8 @@ class AuditActions:
     REWARD_ITEM_UPDATED = "reward_item.updated"
     WALLET_FROZEN = "wallet.frozen"
     WALLET_UNFROZEN = "wallet.unfrozen"
+    WALLET_CLOSED = "wallet.closed"
+    WALLET_ACTIVATED = "wallet.activated"
     WEEKLY_BONUS_ISSUED = "weekly_bonus.issued"
 
 

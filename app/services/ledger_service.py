@@ -13,10 +13,17 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import InsufficientCreditsError, LedgerError, NotFoundError
+from app.core.exceptions import (
+    ConflictError,
+    InsufficientCreditsError,
+    LedgerError,
+    NotFoundError,
+)
 from app.models.enums import (
     AccountType,
+    EarningEventStatus,
     EntryDirection,
+    RedemptionStatus,
     TransactionStatus,
     TransactionType,
     WalletStatus,
@@ -25,6 +32,7 @@ from app.models.ledger import LedgerEntry, LedgerTransaction
 from app.models.ledger_account import LedgerAccount
 from app.repositories.ledger import LedgerRepository
 from app.repositories.ledger_account import LedgerAccountRepository
+from app.repositories.reward_item import RewardItemRepository
 from app.repositories.wallet import WalletRepository
 
 
@@ -41,6 +49,7 @@ class LedgerService:
         self.ledger = LedgerRepository(db)
         self.accounts = LedgerAccountRepository(db)
         self.wallets = WalletRepository(db)
+        self.items = RewardItemRepository(db)
 
     def get_by_idempotency_key(self, key: str) -> LedgerTransaction | None:
         return self.ledger.get_by_idempotency_key(key)
@@ -58,6 +67,16 @@ class LedgerService:
     ) -> LedgerTransaction:
         existing = self.ledger.get_by_idempotency_key(idempotency_key)
         if existing:
+            # An idempotency key must never resolve to a transaction of a
+            # different type. Without this guard a key harvested from one
+            # operation (e.g. a student's own earn) could be replayed into a
+            # redeem, which would then "complete" against the earn transaction
+            # with no debit ever posted. Callers additionally scope keys by
+            # actor, so a genuine retry always matches on type here.
+            if existing.transaction_type != transaction_type:
+                raise ConflictError(
+                    "Idempotency key already used for a different transaction"
+                )
             return existing
 
         if not entries:
@@ -85,11 +104,14 @@ class LedgerService:
                 metadata=metadata,
             )
         except IntegrityError:
+            # A concurrent post won the unique idempotency key. The transaction is
+            # now aborted, so we must roll back — but that discards the caller's
+            # own uncommitted rows (the earning event / redemption), so we cannot
+            # safely return the raced transaction for the caller to attach to a
+            # now-gone row. Raise a retryable conflict; callers dedupe idempotently
+            # on retry via their own key checks.
             self.db.rollback()
-            raced = self.ledger.get_by_idempotency_key(idempotency_key)
-            if raced:
-                return raced
-            raise
+            raise ConflictError("Concurrent transaction conflict; please retry")
 
     def _insert_transaction(
         self,
@@ -199,6 +221,17 @@ class LedgerService:
         idempotency_key: str,
         created_by: UUID | None = None,
     ) -> LedgerTransaction:
+        # Idempotent replay: a retried reversal (same key, e.g. after a client
+        # timeout on a request that actually committed) returns the original
+        # result instead of tripping the already-reversed guard below.
+        existing = self.ledger.get_by_idempotency_key(idempotency_key)
+        if existing:
+            if existing.transaction_type != TransactionType.reversal:
+                raise ConflictError(
+                    "Idempotency key already used for a different transaction"
+                )
+            return existing
+
         original = self.ledger.get_transaction_for_update(original_tx_id)
         if not original:
             raise NotFoundError("Original transaction not found")
@@ -218,6 +251,24 @@ class LedgerService:
             for entry in original.entries
         ]
 
+        # A reversal must not drive a student wallet negative. Any student-wallet
+        # entry that was a CREDIT in the original becomes a DEBIT here, so lock
+        # that account and verify the balance covers it (e.g. reversing an earn
+        # whose credits were already spent must be refused, not silently negative).
+        for entry in original.entries:
+            account = entry.account
+            if (
+                account is not None
+                and account.account_type == AccountType.student_wallet
+                and entry.direction == EntryDirection.credit
+            ):
+                self.accounts.lock_student_wallet_account(account.wallet_id)
+                if self.ledger.account_balance(account.id) < entry.amount:
+                    raise InsufficientCreditsError(
+                        "Cannot reverse: student balance is insufficient "
+                        "(credits already spent)"
+                    )
+
         tx = self.post_transaction(
             transaction_type=TransactionType.reversal,
             idempotency_key=idempotency_key,
@@ -228,6 +279,15 @@ class LedgerService:
             entries=reversed_entries,
         )
         original.status = TransactionStatus.reversed
+
+        # Cascade to the domain rows this transaction backed so reports, receipts,
+        # and stock reflect the reversal.
+        for event in original.earning_events:
+            event.status = EarningEventStatus.reversed
+        for redemption in original.redemptions:
+            redemption.status = RedemptionStatus.reversed
+            self.items.restore_inventory(redemption.reward_item_id)
+
         self.db.flush()
         return tx
 

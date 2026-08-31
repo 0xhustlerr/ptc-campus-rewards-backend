@@ -10,14 +10,30 @@ from app.models.earning_event import EarningEvent
 from app.models.enums import EarningEventStatus
 
 
+def _campus_tz() -> ZoneInfo | type[UTC]:
+    try:
+        return ZoneInfo(get_settings().campus_timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return UTC
+
+
 def _campus_day_start_utc() -> datetime:
     """Start of 'today' in the configured campus timezone, expressed in UTC."""
-    try:
-        tz = ZoneInfo(get_settings().campus_timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = UTC
+    tz = _campus_tz()
     local_midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
     return local_midnight.astimezone(UTC)
+
+
+def _campus_week_start_utc() -> datetime:
+    """Start of the current calendar week (Monday 00:00) in the campus timezone,
+    expressed in UTC. Keeps the weekly limit aligned to calendar weeks like the
+    daily limit, instead of a rolling 7-day window."""
+    tz = _campus_tz()
+    now_local = datetime.now(tz)
+    monday_local = (now_local - timedelta(days=now_local.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return monday_local.astimezone(UTC)
 
 
 class EarningEventRepository:
@@ -72,5 +88,5 @@ class EarningEventRepository:
         return self.count_rule_usage(student_id, rule_id, since=since)
 
     def weekly_count(self, student_id: uuid.UUID, rule_id: uuid.UUID) -> int:
-        since = datetime.now(UTC) - timedelta(days=7)
+        since = _campus_week_start_utc()
         return self.count_rule_usage(student_id, rule_id, since=since)

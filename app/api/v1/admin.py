@@ -6,7 +6,14 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import AdminUser, DbSession
 from app.models.enums import UserStatus
-from app.schemas.admin import AdminUserStatusUpdate, AuditLogRead, CreateAdminRequest, AdminAccountRead, PendingRegistrationRead
+from app.schemas.admin import (
+    AdminRedemptionRead,
+    AdminUserStatusUpdate,
+    AuditLogRead,
+    CreateAdminRequest,
+    AdminAccountRead,
+    PendingRegistrationRead,
+)
 from app.schemas.auth import UserRead
 from app.schemas.earning_rule import EarningRuleCreate, EarningRuleRead, EarningRuleUpdate
 from app.schemas.ledger import (
@@ -94,13 +101,36 @@ def admin_transactions(db: DbSession, _: AdminUser) -> list[LedgerTransactionRea
     return [transaction_to_read(tx) for tx in LedgerService(db).list_all_transactions()]
 
 
+@router.get("/redemptions", response_model=list[AdminRedemptionRead])
+def admin_redemptions(
+    db: DbSession,
+    _: AdminUser,
+    limit: int = Query(200, ge=1, le=500),
+) -> list[AdminRedemptionRead]:
+    return [
+        AdminRedemptionRead(
+            id=r.id,
+            student_name=r.student.full_name if r.student else "Unknown student",
+            vendor_name=r.vendor.name if r.vendor else "Unknown vendor",
+            item_name=r.reward_item.name if r.reward_item else "Unknown item",
+            amount=r.amount_tokens,
+            status=r.status,
+            created_at=r.created_at,
+        )
+        for r in AdminService(db).list_redemptions(limit)
+    ]
+
+
 @router.get("/audit-logs", response_model=list[AuditLogRead])
 def admin_audit_logs(
     db: DbSession,
     _: AdminUser,
     limit: int = Query(100, ge=1, le=200),
 ) -> list[AuditLogRead]:
-    return [audit_log_to_read(log) for log in AdminService(db).list_audit_logs(limit)]
+    svc = AdminService(db)
+    logs = svc.list_audit_logs(limit)
+    emails = svc.resolve_actor_emails([log.actor_user_id for log in logs if log.actor_user_id])
+    return [audit_log_to_read(log, emails.get(log.actor_user_id)) for log in logs]
 
 
 @router.get("/users/pending", response_model=list[PendingRegistrationRead])

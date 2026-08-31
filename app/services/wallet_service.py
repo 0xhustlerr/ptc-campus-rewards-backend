@@ -62,3 +62,7 @@ class WalletService:
 
     def count_transactions(self, wallet_id: UUID) -> int:
         return self.ledger_svc.count_wallet_transactions(wallet_id)
+
+    def get_totals(self, wallet_id: UUID) -> tuple[Decimal, Decimal]:
+        """Lifetime (total_earned, total_redeemed) across all transactions."""
+        return self.ledger.wallet_totals(wallet_id)

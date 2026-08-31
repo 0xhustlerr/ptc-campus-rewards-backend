@@ -3,10 +3,22 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 JwtAlgorithm = Literal["HS256"]
+
+# Known placeholder secrets that ship in example/dev config. These must never be
+# the effective signing key in a deployed environment.
+_INSECURE_JWT_SECRETS = frozenset(
+    {
+        "change-me-to-a-long-random-secret-at-least-32-chars",
+        "change-me",
+        "changeme",
+        "secret",
+        "test-secret-key-at-least-32-characters-long",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -80,6 +92,20 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @model_validator(mode="after")
+    def _reject_insecure_production_secrets(self) -> "Settings":
+        if not self.is_production:
+            return self
+        if self.jwt_secret_key.strip().lower() in _INSECURE_JWT_SECRETS:
+            raise ValueError(
+                "JWT_SECRET_KEY is set to a known placeholder value; generate a "
+                "unique secret (e.g. `python -c \"import secrets; "
+                "print(secrets.token_urlsafe(48))\"`) before deploying to production."
+            )
+        if self.debug:
+            raise ValueError("DEBUG must be disabled when ENVIRONMENT=production.")
+        return self
 
 
 @lru_cache

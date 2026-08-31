@@ -23,17 +23,17 @@ class RewardItemRead(ORMModel):
 class RewardItemCreate(BaseModel):
     name: str
     category: RewardCategory
-    price_tokens: Decimal
+    price_tokens: Decimal = Field(gt=0, description="PTC Credits required; must be positive")
     vendor_id: UUID | None = None
-    inventory_count: int | None = None
+    inventory_count: int | None = Field(default=None, ge=0)
     active: bool = True
 
 
 class RewardItemUpdate(BaseModel):
     name: str | None = None
     category: RewardCategory | None = None
-    price_tokens: Decimal | None = None
-    inventory_count: int | None = None
+    price_tokens: Decimal | None = Field(default=None, gt=0)
+    inventory_count: int | None = Field(default=None, ge=0)
     active: bool | None = None
     vendor_id: UUID | None = None
 

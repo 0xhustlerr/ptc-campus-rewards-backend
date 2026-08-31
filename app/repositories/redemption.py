@@ -45,7 +45,11 @@ class RedemptionRepository:
     def list_all(self, limit: int = 200) -> list[Redemption]:
         stmt = (
             select(Redemption)
-            .options(joinedload(Redemption.student), joinedload(Redemption.reward_item))
+            .options(
+                joinedload(Redemption.student),
+                joinedload(Redemption.reward_item),
+                joinedload(Redemption.vendor),
+            )
             .order_by(Redemption.created_at.desc())
             .limit(limit)
         )

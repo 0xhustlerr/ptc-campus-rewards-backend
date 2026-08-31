@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -83,15 +84,21 @@ class RedemptionService:
         reward_item_id: UUID,
         idempotency_key: str,
     ) -> dict:
-        existing = self.redemptions.get_by_idempotency_key(idempotency_key)
+        vendor = self.vendors.get_by_user_id(vendor_user_id)
+        if not vendor or vendor.status != VendorStatus.active:
+            raise NotFoundError("Vendor not found")
+
+        # Scope the client-chosen key to this vendor. Two vendors that happen to
+        # pick the same weak key (e.g. "12345678") must not resolve to each
+        # other's redemption, and a key harvested from another transaction type
+        # can never match here. A retry by the same vendor stays idempotent.
+        scoped_key = f"redeem:{vendor.id}:{idempotency_key}"
+
+        existing = self.redemptions.get_by_idempotency_key(scoped_key)
         if existing:
             if existing.status == RedemptionStatus.completed:
                 return self._receipt_from_redemption(existing)
             raise AppError("Redemption already in progress", code="redemption_in_progress")
-
-        vendor = self.vendors.get_by_user_id(vendor_user_id)
-        if not vendor or vendor.status != VendorStatus.active:
-            raise NotFoundError("Vendor not found")
 
         item = self.items.get_by_id(reward_item_id)
         if not item or not item.active:
@@ -123,9 +130,19 @@ class RedemptionService:
             reward_item_id=item.id,
             amount_tokens=amount,
             status=RedemptionStatus.pending,
-            idempotency_key=idempotency_key,
+            idempotency_key=scoped_key,
         )
-        self.redemptions.create(redemption)
+        try:
+            self.redemptions.create(redemption)
+        except IntegrityError:
+            # A concurrent redeem with the same scoped key won the unique index.
+            # Roll back (also releasing our inventory reservation) and return the
+            # committed receipt idempotently instead of a 500.
+            self.db.rollback()
+            existing = self.redemptions.get_by_idempotency_key(scoped_key)
+            if existing and existing.status == RedemptionStatus.completed:
+                return self._receipt_from_redemption(existing)
+            raise AppError("Redemption already in progress", code="redemption_in_progress")
 
         try:
             if not self.sessions.mark_used_atomic(session.id):
@@ -135,7 +152,7 @@ class RedemptionService:
                 wallet_id=student.wallet.id,
                 vendor_id=vendor.id,
                 amount=amount,
-                idempotency_key=idempotency_key,
+                idempotency_key=scoped_key,
                 created_by=vendor_user_id,
                 reference_type="redemption",
                 reference_id=str(redemption.id),

@@ -147,3 +147,113 @@ def test_transaction_reversal(student_with_wallet, earning_rule, staff_user, db_
     original = LedgerService(db_session).ledger.get_transaction(event.ledger_transaction_id)
     assert original.status == TransactionStatus.reversed
     assert reversal.transaction_type == TransactionType.reversal
+
+
+def test_reversal_cannot_drive_wallet_negative(
+    student_with_wallet, earning_rule, staff_user, vendor_with_account, reward_item, db_session, system_accounts
+):
+    """Reversing an earn whose credits were already spent must be refused."""
+    wallet_id = student_with_wallet.wallet.id
+    event = EarningService(db_session).issue_reward(
+        student_id=student_with_wallet.id,
+        earning_rule_id=earning_rule.id,
+        notes=None,
+        idempotency_key=f"earn-{uuid4()}",
+        issued_by=staff_user.id,
+    )
+    # Spend the credits so the wallet cannot absorb a reversal debit.
+    plain, _ = RedemptionService(db_session).create_qr_session(student_with_wallet.id)
+    RedemptionService(db_session).redeem(
+        vendor_user_id=vendor_with_account.user_id,
+        qr_session_token=plain,
+        reward_item_id=reward_item.id,
+        idempotency_key=f"spend-{uuid4()}",
+    )
+    balance = WalletService(db_session).get_balance(wallet_id)
+
+    # The floor check raises before any write, so nothing is mutated.
+    with pytest.raises(InsufficientCreditsError):
+        LedgerService(db_session).reverse_transaction(
+            event.ledger_transaction_id,
+            idempotency_key=f"rev-tx-{uuid4()}",
+            created_by=staff_user.id,
+        )
+    # Balance and original status are untouched by the refused reversal.
+    assert WalletService(db_session).get_balance(wallet_id) == balance
+    original = LedgerService(db_session).ledger.get_transaction(event.ledger_transaction_id)
+    assert original.status == TransactionStatus.posted
+
+
+def test_reversal_is_idempotent_on_retry(
+    student_with_wallet, earning_rule, staff_user, db_session, system_accounts
+):
+    """Re-issuing the same reversal key returns the original result, not an error."""
+    event = EarningService(db_session).issue_reward(
+        student_id=student_with_wallet.id,
+        earning_rule_id=earning_rule.id,
+        notes=None,
+        idempotency_key=f"earn-{uuid4()}",
+        issued_by=staff_user.id,
+    )
+    key = f"rev-tx-{uuid4()}"
+    first = LedgerService(db_session).reverse_transaction(
+        event.ledger_transaction_id, idempotency_key=key, created_by=staff_user.id
+    )
+    db_session.commit()
+    second = LedgerService(db_session).reverse_transaction(
+        event.ledger_transaction_id, idempotency_key=key, created_by=staff_user.id
+    )
+    assert first.id == second.id
+
+
+def test_reversing_redeem_restores_inventory_and_status(
+    student_with_wallet, earning_rule, staff_user, vendor_with_account, db_session, system_accounts
+):
+    """Reversing a redeem returns stock and marks the redemption reversed."""
+    from uuid import UUID
+
+    from app.models.enums import RedemptionStatus, RewardCategory
+    from app.models.redemption import Redemption
+    from app.models.reward_item import RewardItem
+
+    # Fund enough to redeem.
+    for _ in range(2):
+        EarningService(db_session).issue_reward(
+            student_id=student_with_wallet.id,
+            earning_rule_id=earning_rule.id,
+            notes=None,
+            idempotency_key=f"fund-{uuid4()}",
+            issued_by=staff_user.id,
+        )
+    item = RewardItem(
+        name="Limited Item",
+        category=RewardCategory.food_truck,
+        price_tokens=Decimal("2.00"),
+        vendor_id=vendor_with_account.id,
+        inventory_count=1,
+        active=True,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    plain, _ = RedemptionService(db_session).create_qr_session(student_with_wallet.id)
+    receipt = RedemptionService(db_session).redeem(
+        vendor_user_id=vendor_with_account.user_id,
+        qr_session_token=plain,
+        reward_item_id=item.id,
+        idempotency_key=f"redeem-{uuid4()}",
+    )
+    db_session.refresh(item)
+    assert item.inventory_count == 0
+
+    redemption = db_session.get(Redemption, UUID(receipt["redemption_id"]))
+    LedgerService(db_session).reverse_transaction(
+        redemption.ledger_transaction_id,
+        idempotency_key=f"rev-{uuid4()}",
+        created_by=staff_user.id,
+    )
+    db_session.commit()
+    db_session.refresh(item)
+    db_session.refresh(redemption)
+    assert item.inventory_count == 1
+    assert redemption.status == RedemptionStatus.reversed

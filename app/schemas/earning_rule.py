@@ -24,9 +24,9 @@ class EarningRuleRead(ORMModel):
 class EarningRuleCreate(BaseModel):
     code: str
     name: str
-    token_amount: Decimal
-    daily_limit: int | None = None
-    weekly_limit: int | None = None
+    token_amount: Decimal = Field(gt=0, description="PTC Credits per issuance; must be positive")
+    daily_limit: int | None = Field(default=None, ge=1)
+    weekly_limit: int | None = Field(default=None, ge=1)
     requires_note: bool = False
     requires_approval: bool = False
     active: bool = True
@@ -34,9 +34,9 @@ class EarningRuleCreate(BaseModel):
 
 class EarningRuleUpdate(BaseModel):
     name: str | None = None
-    token_amount: Decimal | None = None
-    daily_limit: int | None = None
-    weekly_limit: int | None = None
+    token_amount: Decimal | None = Field(default=None, gt=0)
+    daily_limit: int | None = Field(default=None, ge=1)
+    weekly_limit: int | None = Field(default=None, ge=1)
     requires_note: bool | None = None
     requires_approval: bool | None = None
     active: bool | None = None

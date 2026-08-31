@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.deps import AdminUser
 from app.api.v1 import admin, auth, earning_rules, reports, rewards, staff, students, vendor, wallets
 from app.core.config import get_settings
 from app.schemas.common import HealthDetailResponse, HealthResponse
@@ -21,7 +22,9 @@ def health_v1() -> HealthResponse:
 
 
 @api_router.get("/health/detail", response_model=HealthDetailResponse, tags=["health"])
-def health_v1_detail() -> HealthDetailResponse:
+def health_v1_detail(_: AdminUser) -> HealthDetailResponse:
+    # Admin-only: exact version + dependency reachability are useful to an
+    # attacker fingerprinting the deployment, so keep them off the public surface.
     from app.utils.health import check_database, check_redis
 
     db_status = check_database()

@@ -41,3 +41,14 @@ class RewardItemRepository:
             .values(inventory_count=RewardItem.inventory_count - 1)
         )
         return result.rowcount == 1
+
+    def restore_inventory(self, item_id: uuid.UUID) -> None:
+        """Return one unit to stock (reversal/refund); a no-op for untracked items."""
+        self.db.execute(
+            update(RewardItem)
+            .where(
+                RewardItem.id == item_id,
+                RewardItem.inventory_count.is_not(None),
+            )
+            .values(inventory_count=RewardItem.inventory_count + 1)
+        )

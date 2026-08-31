@@ -35,8 +35,11 @@ app = FastAPI(
         "No blockchain, external transfers, cash-out, or student-to-student transfers."
     ),
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Interactive API docs expose the full admin/ledger schema; disable them in
+    # production so the attack surface is not publicly browsable.
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.state.limiter = limiter
